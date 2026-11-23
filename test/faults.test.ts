@@ -255,17 +255,16 @@ describe("fault injection (SPEC tests 5 and 6)", () => {
     const deadline = Date.now() + 420_000;
     while (Date.now() < deadline) {
       await collect(5_000);
-      if (observed.restartLimit && observed.attempts >= 5 && !observed.toolLive) break;
+      if (observed.restartLimit && observed.attempts >= 4 && !observed.toolLive) break;
     }
     expect(observed.restartLimit).toBe(true);
     expect(observed.toolLive).toBe(false);
-    // The count is the seeded execution plus the Session's runs; whether
-    // it lands on five or six depends on whether the eviction registered
-    // as the seeded execution's cut-off (an upstream accounting detail).
-    // The SPEC claim: the Session runs it at most five times, the task
-    // ends at the restart limit, and it does not run again after.
-    expect(observed.attempts).toBeGreaterThanOrEqual(5);
-    expect(observed.attempts).toBeLessThanOrEqual(6);
+    // Arming resets the count, so it holds only the Session's executions
+    // (measured: 5). Whether the eviction also counted as the seeded
+    // execution's cut-off is an upstream accounting detail that can only
+    // lower it. The SPEC claim: no sixth run, and none after the limit.
+    expect(observed.attempts).toBeGreaterThanOrEqual(4);
+    expect(observed.attempts).toBeLessThanOrEqual(5);
     const finalAttempts = observed.attempts;
     await sleep(3_000);
     await collect(5_000);

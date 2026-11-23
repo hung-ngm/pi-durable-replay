@@ -5,6 +5,7 @@ import {
   type Harness,
   type TaskId,
 } from "@earendil-works/pi-durable";
+import { CrashDoc } from "./tools.ts";
 
 export type FaultState = {
   /** Conversation where the crash-loop fault is armed, if any. */
@@ -53,6 +54,10 @@ export async function armCrashLoop(
     doc.aborts = 0;
     delete doc.lastAbortAt;
     delete doc.attemptsAtLastAbort;
+    // Count this demo's executions from zero, so a second demo in the same
+    // Session does not start from the first one's total.
+    const crash = await tx.doc(CrashDoc);
+    crash.attempts = 0;
   }, context);
 }
 
