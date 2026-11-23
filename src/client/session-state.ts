@@ -23,6 +23,7 @@ import {
   type QueuedInput,
   type ServerEvent,
 } from "../protocol.ts";
+import { type PiMessage, projectConversation } from "./projection.ts";
 
 export interface TranscriptToolCall {
   readonly callId: string;
@@ -81,6 +82,10 @@ export interface LiveCompaction {
 /** What the client renders of one conversation, derived from its view. */
 export interface ConversationSnapshot {
   readonly id: number;
+  readonly messages: readonly PiMessage[];
+  readonly isRunning: boolean;
+  readonly runTaskId?: number;
+  readonly hasEarlier: boolean;
   readonly entries: readonly TranscriptEntry[];
   /** The transcript continues before the oldest entry loaded. */
   readonly earlier: boolean;
@@ -141,12 +146,17 @@ export function sessionReducer(state: SessionState, action: SessionAction): Sess
     case "event":
       return reduceServerEvent(state, action.event);
     case "view": {
-      const typing = state.snapshots[action.conversationId]?.typing ?? [];
+      const before = state.snapshots[action.conversationId];
       return {
         ...state,
         snapshots: {
           ...state.snapshots,
-          [action.conversationId]: conversationSnapshot(action.conversationId, action.view, typing),
+          [action.conversationId]: conversationSnapshot(
+            action.conversationId,
+            action.view,
+            before?.typing,
+            before?.messages,
+          ),
         },
       };
     }
@@ -206,6 +216,9 @@ function reduceServerEvent(state: SessionState, event: ServerEvent): SessionStat
 
 const emptyConversation = (id: number): ConversationSnapshot => ({
   id,
+  messages: [],
+  isRunning: false,
+  hasEarlier: false,
   entries: [],
   earlier: false,
   gaps: [],
@@ -224,18 +237,24 @@ export function conversationSnapshot(
   id: number,
   view: TranscriptView,
   typing: readonly string[] = [],
+  previous: readonly PiMessage[] = [],
 ): ConversationSnapshot {
   const live = (view.docs["pi.live"] ?? {}) as unknown as LiveState;
   const partial = live.generation?.message as AssistantMessage | undefined;
   const failure = conversationFailure(live);
   const agent = view.docs["pi.agent"] as AgentState | undefined;
   const usage = view.docs["pi.usage"] as unknown as UsageState | undefined;
+  const earlier = view.items[0]?.kind === "earlier";
   return {
     id,
+    messages: projectConversation(view, previous),
+    isRunning: live.run !== undefined,
+    ...(live.run === undefined ? {} : { runTaskId: live.run.taskId }),
+    hasEarlier: earlier,
     entries: view.items.flatMap((item) =>
       item.kind === "entry" ? [transcriptEntry(item.entry)] : [],
     ),
-    earlier: view.items[0]?.kind === "earlier",
+    earlier,
     gaps: view.items.filter((item): item is TranscriptGap => item.kind === "gap"),
     live: liveConversation(live.run !== undefined, partial, live.generation?.retry),
     tools: (live.tools ?? []).map((slot) => ({
