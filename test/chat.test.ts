@@ -441,7 +441,14 @@ describe("chat application", () => {
       session: {
         conversations: [{ id: 1 }],
         activity: { tasks: {} },
-        control: { tokenBudget: 100_000, turnBudget: 30, kills: [], ledger: [], replays: {} },
+        control: {
+          tokenBudget: 100_000,
+          turnBudget: 30,
+          kills: [],
+          ledger: [],
+          replays: {},
+          crashAttempts: 0,
+        },
       },
     });
 
@@ -455,7 +462,14 @@ describe("chat application", () => {
           "pi.agent": {
             model: { provider: "openai", modelId: "gpt-6-luna" },
             thinkingLevel: "off",
-            tools: ["search", "research", "charge_credits", "slow_search", "loop_forever"],
+            tools: [
+              "search",
+              "research",
+              "charge_credits",
+              "slow_search",
+              "loop_forever",
+              "crash_loop",
+            ],
           },
         },
       },

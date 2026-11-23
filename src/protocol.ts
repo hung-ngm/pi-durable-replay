@@ -135,6 +135,13 @@ export type ClientCommand =
       readonly conversationId: number;
     }
   | {
+      /** Inject a demo fault: interrupt the live unsafe tool, arm the crash loop, or evict the object. */
+      readonly type: "fault.inject";
+      readonly requestId: string;
+      readonly conversationId: number;
+      readonly kind: "interrupt-unsafe" | "crash-loop" | "evict";
+    }
+  | {
       readonly type: "control.setBudgets";
       readonly requestId: string;
       readonly tokenBudget: number;
@@ -150,6 +157,8 @@ export interface ControlView {
   readonly ledger: readonly LedgerEntry[];
   /** Fork Replay provenance by conversation ID, for conversations that are replays. */
   readonly replays: Readonly<Record<string, ReplayState>>;
+  /** crash_loop fault-tool executions so far (fault evidence for the panel). */
+  readonly crashAttempts: number;
 }
 
 export type CommandResult =
@@ -262,6 +271,7 @@ const commandTypes = new Set<ClientCommandType>([
   "control.setBudgets",
   "run.replayFork",
   "run.approveUnsafe",
+  "fault.inject",
 ]);
 
 const requireCommandType = (value: unknown): ClientCommandType => {
@@ -453,6 +463,18 @@ export function parseClientCommand(message: string): ClientCommand {
         conversationId: requireId(value.conversationId, "conversationId"),
         entryId: requireId(value.entryId, "entryId"),
       };
+    case "fault.inject": {
+      const kind = value.kind;
+      if (kind !== "interrupt-unsafe" && kind !== "crash-loop" && kind !== "evict") {
+        throw new InvalidClientCommand("kind must be interrupt-unsafe, crash-loop, or evict");
+      }
+      return {
+        type: value.type,
+        requestId,
+        conversationId: requireId(value.conversationId, "conversationId"),
+        kind,
+      };
+    }
     case "run.approveUnsafe":
       return {
         type: value.type,
@@ -539,6 +561,10 @@ function parseControlView(value: unknown): ControlView {
     kills: value.kills as KillRecord[],
     ledger: value.ledger as LedgerEntry[],
     replays: (isRecord(value.replays) ? value.replays : {}) as Record<string, ReplayState>,
+    crashAttempts:
+      typeof value.crashAttempts === "number" && Number.isSafeInteger(value.crashAttempts)
+        ? value.crashAttempts
+        : 0,
   };
 }
 

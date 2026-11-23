@@ -8,9 +8,11 @@ Pi Durable is experimental, so its APIs may still change.
 
 ## What you can try
 
-- Create a session and run several conversations at once; fork a conversation from an earlier message.
-- Reconnect without losing committed transcripts or queued prompts.
-- Open Activity to inspect live task ownership, waits, sleeps, tool calls, and background work while conversations run.
+- Ask the research agent a question: it fans out to three parallel subagent conversations, searches a built-in corpus, and synthesizes an answer with citations.
+- Watch every run as a live task graph in the Activity panel, and kill work at four scopes: a tool, a run, a conversation, or the whole session.
+- Set per-run budgets (default 100,000 tokens or 30 turns) in the Control Panel. A run that crosses one is budget-killed, and the panel names which budget fired. Budget edits apply to the next run only.
+- Fail a run, then use Replay on an earlier entry: Fork Replay carries completed tool results forward as history, so safe tools never run again, and the unsafe `charge_credits` tool stays blocked until you approve it in the Control Panel. The Ledger beside the transcript proves each charge landed exactly once.
+- Inject faults from the Control Panel: interrupt a live charge, arm a crash loop that cuts the object off until the tool ends at its restart limit, or evict the Durable Object and watch the run resume through its alarm.
 
 This is a single-user tool, not a production service.
 
@@ -35,7 +37,17 @@ Then start the Worker and React client together:
 bun run dev
 ```
 
-Open the local URL printed by Vite, create a session, and send a message. Open the session URL in another browser to try the multiplayer flow.
+Open the local URL printed by Vite, create a session, and send a message.
+
+### Local kill -9 demo
+
+The same resume guarantees hold outside Cloudflare. This script starts the agent under Bun over a file-backed store, kills it with `kill -9` in the middle of a tool call, then reopens the store in a fresh process and resumes:
+
+```sh
+OPENAI_API_KEY=... bun run demo:local-kill
+```
+
+It runs two scenarios and prints the full transcript of each: a safe tool (`slow_search`) reruns and completes after the kill, and an unsafe tool (`charge_credits`) is reported interrupted, is never re-fired, and leaves exactly one Ledger entry.
 
 ## Where to look
 
@@ -61,14 +73,13 @@ bun run preview # preview the production build locally
 
 ## Deploy
 
-Authenticate Wrangler, store the API key and the control token as Worker secrets, then deploy:
+Deployment runs in GitHub Actions (`.github/workflows/deploy.yml`), not from a local Wrangler: every push to `main` runs the checks and the test suite, then deploys. One-time setup, all in your own browser sessions:
 
-```sh
-bun x wrangler login
-bun x wrangler secret put OPENAI_API_KEY
-bun x wrangler secret put CONTROL_TOKEN
-bun run deploy
-```
+1. In the Cloudflare dashboard, create an account API token with the **Edit Cloudflare Workers** permission policy, scoped to your account, and note your account ID.
+2. In this repo's GitHub settings (Secrets and variables > Actions), add four repository secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `OPENAI_API_KEY` (your existing provider key), and `CONTROL_TOKEN` (a password you choose for this app).
+3. Push to `main`, or run the workflow manually from the Actions tab.
+
+The workflow uploads `OPENAI_API_KEY` and `CONTROL_TOKEN` as Worker secrets in the same operation as the deploy (`wrangler deploy --secrets-file`), from a file that exists only in the runner's temp directory.
 
 The API requires `Authorization: Bearer <CONTROL_TOKEN>` on session creation and the same token as a `token` query parameter on the session WebSocket. The browser UI prompts for it once and keeps it in session storage only. A deployment must always set CONTROL_TOKEN: without it the API is open, which is only acceptable for local development.
 

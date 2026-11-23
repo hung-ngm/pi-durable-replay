@@ -48,6 +48,7 @@ export interface PiSession {
   readonly control: ControlView | undefined;
   readonly error: string | undefined;
   replayFork(conversationId: number, entryId: number): void;
+  injectFault(conversationId: number, kind: "interrupt-unsafe" | "crash-loop" | "evict"): void;
   approveUnsafe(conversationId: number): void;
   abortTask(taskId: number, scope: "run" | "tool"): void;
   abortConversation(conversationId: number): void;
@@ -355,6 +356,20 @@ export function usePiSession(
     [outbox, sendRetriable],
   );
 
+  const injectFault = useCallback(
+    (conversationId: number, kind: "interrupt-unsafe" | "crash-loop" | "evict") => {
+      // Fire-and-forget: an eviction drops the connection before any result
+      // could matter, and a retried inject would double-apply the fault.
+      send({
+        type: "fault.inject",
+        requestId: crypto.randomUUID(),
+        conversationId,
+        kind,
+      });
+    },
+    [send],
+  );
+
   const replayFork = useCallback(
     (conversationId: number, entryId: number) => {
       sendRetriable({
@@ -435,6 +450,7 @@ export function usePiSession(
     activity: state.activity,
     control: state.control,
     error: state.error,
+    injectFault,
     replayFork,
     approveUnsafe,
     abortTask,

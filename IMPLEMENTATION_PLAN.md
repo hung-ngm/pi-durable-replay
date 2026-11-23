@@ -60,9 +60,11 @@ Agreed 23 Nov 2026. Every unit ends in a check. A unit that is not green is not 
 
 ## Unit 10 - Deploy (gated)
 
-- Show the operator the exact wrangler target and secret names. Deploy only on the operator's explicit go-ahead.
-- `wrangler secret put OPENAI_API_KEY` and `CONTROL_TOKEN`. Deploy Worker name `pi-durable-replay` to its `workers.dev` address.
-- Check: the live URL answers, a full research run completes on the deploy, a kill works on the deploy, and the eviction fault resumes on the deploy. Verify the live page by a marker that exists only in the new build.
+- Revised 23 Nov 2026 at the operator's direction: deployment runs as a GitHub Actions workflow, not a local wrangler run. The development sandbox cannot reach the Cloudflare API or OpenAI from inside workerd (its TLS stack fails through the sandbox's intercepting egress proxy), and CI keeps every credential out of the sandbox. Local wrangler remains the fallback if the operator signs it in himself.
+- `.github/workflows/deploy.yml`: on push to main (or manual dispatch), Bun install, `bun run check`, `bun run test`, then `wrangler deploy --secrets-file` with the app secrets staged from GitHub secrets into a runner-temp file that is deleted in the same job.
+- The operator adds four GitHub repository secrets, all entered in his own browser sessions: `CLOUDFLARE_API_TOKEN` (dashboard token with the "Edit Cloudflare Workers" policy), `CLOUDFLARE_ACCOUNT_ID`, `OPENAI_API_KEY`, `CONTROL_TOKEN`.
+- Worker name `pi-durable-replay` (wrangler.jsonc), deployed to its `workers.dev` address.
+- Check: the live URL answers, a full research run completes on the deploy (`scripts/e2e-live.ts` against the deployed URL), a kill works on the deploy, and the eviction fault resumes on the deploy. Verify the live page by a marker that exists only in the new build.
 
 ## Risks, named
 

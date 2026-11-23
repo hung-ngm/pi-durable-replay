@@ -17,6 +17,16 @@ export const RESEARCH_TOOL_NAME = "research";
 export const CHARGE_CREDITS_TOOL_NAME = "charge_credits";
 export const SLOW_SEARCH_TOOL_NAME = "slow_search";
 export const LOOP_FOREVER_TOOL_NAME = "loop_forever";
+export const CRASH_LOOP_TOOL_NAME = "crash_loop";
+
+/** Execution attempts of the crash_loop fault tool, session-scoped (SPEC test 6 evidence). */
+export const CrashDoc = defineDoc<{ attempts: number }>({
+  kind: "app.crash",
+  version: 1,
+  scope: "session",
+  initial: () => ({ attempts: 0 }),
+  checkpointWhen: () => true,
+});
 
 export type LedgerEntry = {
   taskId: string;
@@ -42,6 +52,12 @@ export const LedgerDoc = defineDoc<{ entries: LedgerEntry[] }>({
 export interface ToolConfig {
   readonly searchBackend: string;
   readonly exaApiKey?: string;
+  /**
+   * How long charge_credits' simulated provider call takes. 300ms in production;
+   * demos widen it so an interrupt or a kill -9 lands deterministically inside
+   * the window between the ledger commit and the provider's answer.
+   */
+  readonly chargeDelayMs?: number;
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -76,6 +92,7 @@ export interface AgentTools {
   readonly chargeCreditsTool: ToolRegistration;
   readonly slowSearchTool: ToolRegistration;
   readonly loopForeverTool: ToolRegistration;
+  readonly crashLoopTool: ToolRegistration;
   readonly all: readonly ToolRegistration[];
   /** Extension carrying only `search`, installed on research subagent conversations. */
   readonly searchExtension: Extension;
@@ -214,7 +231,7 @@ export function createTools(config: ToolConfig): AgentTools {
         return created;
       }, context);
       // The simulated provider call: deliberately after the durable intent.
-      await sleep(300);
+      await sleep(config.chargeDelayMs ?? 300);
       return {
         output: [
           {
@@ -304,13 +321,46 @@ export function createTools(config: ToolConfig): AgentTools {
 
   const loopExtension = defineExtension({ name: "loop", tools: [loopForeverTool] });
 
+  const crashLoopTool: ToolRegistration = {
+    name: CRASH_LOOP_TOOL_NAME,
+    description:
+      "FAULT TOOL: starts and then hangs for 30 seconds, so every process crash, eviction, or reset cuts it off mid-run; after the restart limit (5) it ends with a restart_limit report instead of running again. Only call when asked to demonstrate a crash loop.",
+    parameters: obj({
+      topic: str({ description: "What the crash loop is nominally about" }),
+    }),
+    replay: "safe",
+    execute: async (args, api, context) => {
+      const { topic } = args as { topic: string };
+      const attempts = await api.commit(async (tx) => {
+        const doc = await tx.doc(CrashDoc);
+        doc.attempts += 1;
+        return doc.attempts;
+      }, context);
+      api.output(`crash_loop attempt ${attempts} for ${JSON.stringify(topic)}: running\n`);
+      await api.details({ attempt: attempts, topic }, context);
+      await sleep(30_000);
+      return {
+        output: [{ type: "text" as const, text: `crash_loop finished attempt ${attempts}` }],
+        details: { attempt: attempts },
+      };
+    },
+  };
+
   return {
     searchTool,
     researchTool,
     chargeCreditsTool,
     slowSearchTool,
     loopForeverTool,
-    all: [searchTool, researchTool, chargeCreditsTool, slowSearchTool, loopForeverTool],
+    crashLoopTool,
+    all: [
+      searchTool,
+      researchTool,
+      chargeCreditsTool,
+      slowSearchTool,
+      loopForeverTool,
+      crashLoopTool,
+    ],
     searchExtension,
   };
 }

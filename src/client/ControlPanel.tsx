@@ -10,6 +10,10 @@ interface ControlPanelProps {
   readonly onAbortConversation: (conversationId: number) => void;
   readonly onAbortSession: () => void;
   readonly onApproveUnsafe: (conversationId: number) => void;
+  readonly onInjectFault: (
+    conversationId: number,
+    kind: "interrupt-unsafe" | "crash-loop" | "evict",
+  ) => void;
 }
 
 const totalTokens = (usage: UsageState | undefined): number => {
@@ -31,6 +35,7 @@ export function ControlPanel({
   onAbortConversation,
   onAbortSession,
   onApproveUnsafe,
+  onInjectFault,
 }: ControlPanelProps) {
   const [tokenBudget, setTokenBudget] = useState("");
   const [turnBudget, setTurnBudget] = useState("");
@@ -126,6 +131,50 @@ export function ControlPanel({
           )}
         </div>
       )}
+      <div className="control-faults">
+        <p className="control-note">
+          Fault injection
+          {control === undefined || control.crashAttempts === 0
+            ? ""
+            : ` - crash_loop attempts so far: ${control.crashAttempts}`}
+        </p>
+        <div className="control-actions">
+          <button
+            className="text-button"
+            type="button"
+            disabled={activeConversationId === undefined}
+            onClick={() => {
+              if (activeConversationId !== undefined) {
+                onInjectFault(activeConversationId, "interrupt-unsafe");
+              }
+            }}
+          >
+            Interrupt unsafe tool
+          </button>
+          <button
+            className="text-button"
+            type="button"
+            disabled={activeConversationId === undefined}
+            onClick={() => {
+              if (activeConversationId !== undefined) {
+                onInjectFault(activeConversationId, "crash-loop");
+              }
+            }}
+          >
+            Crash-loop tool
+          </button>
+          <button
+            className="text-button"
+            type="button"
+            onClick={() => {
+              if (activeConversationId !== undefined) onInjectFault(activeConversationId, "evict");
+            }}
+            disabled={activeConversationId === undefined}
+          >
+            Evict object
+          </button>
+        </div>
+      </div>
       <div className="control-actions">
         <button
           type="button"
