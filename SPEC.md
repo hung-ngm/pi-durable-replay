@@ -60,6 +60,185 @@ Data shapes (five, plus the Ledger):
 - `ReplayDoc`: stored document on the forked conversation. Provenance of a Fork Replay.
 - `LedgerDoc`: stored document. One entry per charge, recording the tool task and conversation that made it; a repeat of the same intent in the same conversation returns the existing entry.
 
+## How the system works
+
+The diagrams below describe the code at this commit. Every box is a real module, binding, or stored document.
+
+### Components
+
+One Worker routes every request. Each session is one Durable Object that owns one pi-durable `Harness` and one SQLite store. The transcript, the task graph, and the app's documents live in that store, and every change to them is one atomic commit.
+
+```mermaid
+flowchart LR
+  subgraph Clients
+    UI["Browser UI<br/>src/client (React)"]
+    Script["Scripts<br/>scripts/e2e-*.ts"]
+  end
+
+  subgraph Worker["Worker: src/index.ts"]
+    Auth["auth check<br/>cookie or Bearer"]
+    Assets["static assets<br/>dist/client"]
+  end
+
+  subgraph DO["Session Durable Object: src/session.ts (one per session)"]
+    Socket["hibernating WebSockets<br/>src/protocol.ts commands"]
+    Harness["pi-durable Harness"]
+    Guard["budget guard<br/>src/control.ts"]
+    Watch["crash-loop watcher<br/>src/faults.ts"]
+    Agent["research agent<br/>src/agent.ts + src/tools.ts"]
+    Gate["approval gate hook<br/>src/replay.ts"]
+    subgraph SQLite["SQLite store (one per session)"]
+      Transcript["conversations, entries,<br/>task graph"]
+      Docs["ControlDoc, LedgerDoc,<br/>ReplayDoc, FaultDoc,<br/>CrashDoc, pi.usage"]
+    end
+  end
+
+  OpenAI[("OpenAI via pi-ai")]
+  Alarm(("DO alarm"))
+
+  UI -- "GET /, /sessions/:id" --> Assets
+  UI -- "POST /api/auth, POST /api/sessions" --> Auth
+  UI -- "WebSocket /api/sessions/:id" --> Auth
+  Script -- "Authorization: Bearer" --> Auth
+  Auth -- "SESSIONS.getByName(id)" --> Socket
+  Socket --> Harness
+  Harness --> Agent
+  Agent --> Gate
+  Agent -- "model calls" --> OpenAI
+  Harness <--> SQLite
+  Harness -- "watchTaskGraph" --> Guard
+  Harness -- "watchTaskGraph" --> Watch
+  Harness -- "wake()" --> Alarm
+  Alarm -- "alarm() calls resume()" --> Harness
+```
+
+### Sign-in
+
+The browser signs in once. The Worker answers with a cookie that holds a SHA-256 digest of `CONTROL_TOKEN`, never the token. Every tab and every WebSocket upgrade send the cookie, so a new tab does not ask again.
+
+```mermaid
+sequenceDiagram
+  participant Tab as Browser tab
+  participant W as Worker (src/index.ts)
+  participant S as Session DO
+  Tab->>W: GET /api/auth
+  W-->>Tab: 401 (no cookie yet)
+  Tab->>Tab: prompt for the control token
+  Tab->>W: POST /api/auth {token}
+  W->>W: timingSafeEqual(SHA-256 digests)
+  W-->>Tab: 204 + Set-Cookie pdr_control (HttpOnly, Secure, SameSite=Strict, Path=/api)
+  Note over Tab,W: Any later tab skips the prompt: GET /api/auth answers 204
+  Tab->>W: WebSocket upgrade /api/sessions/:id (cookie sent)
+  W->>S: forward to SESSIONS.getByName(id)
+  S-->>Tab: 101, then session.snapshot
+```
+
+### A run, its owned work, and the Abort Scopes
+
+A run is one live `pi.generation` task in an ownerless conversation. Tool calls are tool tasks owned by the generation. `research` creates three conversations owned by its tool task. A Kill aborts a scope and everything it owns, bottom-up.
+
+```mermaid
+flowchart TD
+  Root["Ownerless conversation<br/>(scope: conversation)"]
+  Gen["pi.generation task<br/>(scope: run)"]
+  T1["pi.tool: search<br/>(scope: tool)"]
+  T2["pi.tool: research<br/>(scope: tool)"]
+  T3["pi.tool: charge_credits<br/>(scope: tool)"]
+  C1["owned conversation:<br/>evidence for"]
+  C2["owned conversation:<br/>limitations"]
+  C3["owned conversation:<br/>costs"]
+  Root --> Gen
+  Gen --> T1
+  Gen --> T2
+  Gen --> T3
+  T2 --> C1
+  T2 --> C2
+  T2 --> C3
+  All["Kill all: every ownerless conversation"] -.-> Root
+```
+
+The budget guard runs whenever the task graph or the commit stream moves. When it first sees a run, it records a baseline: the subtree's tokens and turns, plus the budgets in force at that moment. It judges the run against that snapshot, so a budget edit applies to the next run only.
+
+```mermaid
+sequenceDiagram
+  participant H as Harness
+  participant G as Budget guard (checkBudgets)
+  participant C as ControlDoc
+  H->>G: task graph or commit changed
+  G->>C: first sight of this generation: store baseline and budget snapshot
+  H->>G: task graph or commit changed
+  G->>G: usage = subtree pi.usage tokens and assistant turns - baseline
+  alt usage crosses the snapshot budget
+    G->>C: record Kill {scope: run, reason: budget, budget: tokens or turns}
+    G->>H: abortTask(generation), owned work aborts bottom-up
+  end
+```
+
+### A charge lands exactly once
+
+`charge_credits` commits its Ledger entry before the provider call. The entry is idempotent on its intent: conversation, credits, and memo. An interrupted unsafe tool is never rerun by the harness. If the model retries the charge itself, the retry finds the landed entry and charges nothing.
+
+```mermaid
+sequenceDiagram
+  participant M as Model
+  participant T as charge_credits tool task
+  participant L as LedgerDoc
+  participant P as Provider (simulated)
+  M->>T: charge_credits {credits: 25, memo}
+  T->>L: commit entry {taskId, conversationId, credits, memo}
+  T->>P: provider call (300 ms window)
+  Note over T,P: Kill or crash lands here
+  T-->>M: "interrupted and may have partially run" (not rerun: replay unsafe)
+  M->>T: retry charge_credits {credits: 25, memo}
+  T->>L: find entry with the same conversation, credits, and memo
+  L-->>T: entry already exists
+  T-->>M: "Already charged ... No new charge was made."
+```
+
+### Fork Replay and the approval gate
+
+Fork Replay forks the source conversation at a chosen entry and writes a `ReplayDoc` on the new conversation. Committed tool results before the fork point are history in the fork, so their tools do not run again. The gate arms from the Ledger, not from the carried results. A charge whose result sits after the fork point, or never committed, still blocks.
+
+```mermaid
+sequenceDiagram
+  participant Op as Operator
+  participant S as Session DO
+  participant R as replayFork (src/replay.ts)
+  participant L as LedgerDoc
+  participant F as Forked conversation
+  participant Gate as unsafeGateHook
+  Op->>S: run.replayFork {conversationId, entryId}
+  S->>R: replayFork(source, entryId)
+  R->>R: scan tool results up to entryId (carried)
+  R->>F: forkConversation(source, entryId)
+  R->>L: any entry with conversationId = source?
+  R->>F: ReplayDoc {source, forkEntryId, carried, pendingUnsafeApproval}
+  F->>Gate: model calls charge_credits
+  Gate-->>F: blocked while pendingUnsafeApproval
+  Op->>S: run.approveUnsafe
+  S->>F: ReplayDoc.pendingUnsafeApproval = false
+  F->>Gate: model calls charge_credits
+  Gate-->>F: allowed, one new Ledger entry
+```
+
+### Recovery after eviction or a crash
+
+Memory is lost on eviction. Storage is not. The host arms the DO alarm from `harness.wake()` before any work can start. A new request or the alarm reopens the Harness, and `resume()` continues each task from its last committed checkpoint. A safe tool reruns. An unsafe tool reports that it was interrupted. A task cut off `restartLimit` (5) times in a row ends with `restart_limit`.
+
+```mermaid
+stateDiagram-v2
+  [*] --> Running: prompt.submit
+  Running --> Evicted: eviction, crash, or ctx.abort
+  Evicted --> Reopened: alarm() or a new request
+  Reopened --> Running: resume() from the last checkpoint
+  Running --> Done: final answer
+  Running --> Killed: Kill (manual or budget)
+  Reopened --> RestartLimit: cut off 5 times in a row
+  Done --> [*]
+  Killed --> [*]
+  RestartLimit --> [*]
+```
+
 ## Budgets
 
 Default per run: 100,000 tokens or 30 turns, whichever comes first. Stored in `ControlDoc`, editable in the Control Panel, applied to the next run only. Usage comes from pi-durable's built-in `pi.usage` document.
@@ -81,7 +260,7 @@ Runtime truth: the deployed runtime is workerd. Bun never runs in production on 
 
 ## Auth
 
-One bearer token, a Worker secret, gating the UI and the API at the seam marked in the fork's `src/index.ts`. The model API key is a Worker secret and a local `.dev.vars` entry. No secret is ever committed. No accounts, no multi-tenancy, no rate limiting beyond the token gate in v1.
+One control token, the `CONTROL_TOKEN` Worker secret, gating the API at the seam marked in the fork's `src/index.ts`. Scripts send it as `Authorization: Bearer`. The browser posts it once to `POST /api/auth` and receives an HttpOnly cookie holding its digest, shared by every tab and every WebSocket upgrade (see the sign-in diagram). The model API key is a Worker secret and a local `.dev.vars` entry. No secret is ever committed. No accounts, no multi-tenancy, no rate limiting beyond the token gate in v1.
 
 ## Deploy
 
