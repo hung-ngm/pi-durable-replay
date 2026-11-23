@@ -238,6 +238,8 @@ Perf baseline, measured on trunk `d0d6233` on 23 Nov 2026 with `bun run build`: 
 
 ## R1. Tailwind foundation
 
+As built: Tailwind's preflight is left out until R4, because it resets the browser defaults that the unrestyled dashboards rely on. The button, tooltip, collapsible, and `cn` arrive with the unit that first uses them, and the copied components import by relative path, so there is no `@/` alias. Local checks run on the `verify-alt` launch config (its own `dist-alt/` and `.wrangler-alt/`), because `bun run build` deletes `.wrangler` and `dist` under any other local server; CI runs the full `bun run check`.
+
 - [ ] Depends on: PR4.
 - [ ] Files: `package.json`, `bun.lock`, `vite.config.ts`, `tsconfig.client.json`, new `src/client/globals.css`, new `src/client/lib/utils.ts`, new `src/client/components/ui/{button,tooltip,collapsible}.tsx`, new `src/client/components/assistant-ui/tooltip-icon-button.tsx`, `src/client/main.tsx`, `docs/adr/0006-*.md`, `docs/adr/0005-*.md` (one line pointing to 0006).
 - [ ] Change: add `tailwindcss`, `@tailwindcss/vite`, `tw-animate-css`, `radix-ui`, `class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react` at exact versions. `globals.css` holds `@import "tailwindcss"`, `tw-animate-css`, the zinc tokens for light and dark under `prefers-color-scheme`, the base layer, and the collapsible and shimmer keyframes from assistant-ui's default template. `@/` resolves to `src/client`. `styles.css` stays imported after `globals.css`, so nothing moves yet.

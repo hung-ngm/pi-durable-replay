@@ -4,7 +4,14 @@
     {
       "name": "dev",
       "runtimeExecutable": "bun",
-      "runtimeArgs": ["run", "dev", "--", "--port", "5173", "--strictPort"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "5173",
+        "--strictPort"
+      ],
       "port": 5173
     },
     {
@@ -15,6 +22,15 @@
         "bun run build && bunx wrangler dev -c dist/pi_durable_replay/wrangler.json --port 8799 --var CONTROL_TOKEN:local-verify-token --var SEARCH_BACKEND:corpus"
       ],
       "port": 8799
+    },
+    {
+      "name": "verify-alt",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "bunx vite build --outDir dist-alt && bunx wrangler dev -c dist-alt/pi_durable_replay/wrangler.json --port 8801 --inspector-port 9339 --persist-to .wrangler-alt --var CONTROL_TOKEN:local-verify-token --var SEARCH_BACKEND:corpus"
+      ],
+      "port": 8801
     }
   ]
 }
