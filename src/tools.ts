@@ -30,15 +30,18 @@ export const CrashDoc = defineDoc<{ attempts: number }>({
 
 export type LedgerEntry = {
   taskId: string;
+  /** The conversation the charge was made in: the scope of its idempotency. */
+  conversationId: number;
   credits: number;
   memo: string;
   at: number;
 };
 
 /**
- * Every charge ever made in this Session, one entry per charge, keyed by the tool
- * task ID that made it (SPEC Q17). The ledger, not the transcript, is the
- * exactly-once proof: count entries with a task ID and the count is the answer.
+ * Every charge ever made in this Session, one entry per charge, recording the tool
+ * task that made it (SPEC Q17). A charge is idempotent on its intent - conversation,
+ * credits, and memo - so a model that retries an interrupted charge gets the entry
+ * that already landed. The ledger, not the transcript, is the exactly-once proof.
  */
 export const LedgerDoc = defineDoc<{ entries: LedgerEntry[] }>({
   kind: "app.ledger",
@@ -206,7 +209,7 @@ export function createTools(config: ToolConfig): AgentTools {
   const chargeCreditsTool: ToolRegistration = {
     name: CHARGE_CREDITS_TOOL_NAME,
     description:
-      "Charge fake credits for premium corpus access. UNSAFE: this moves (fake) money. The charge is recorded in the ledger keyed by this tool task's ID before the provider call, so an interrupted charge still lands exactly once.",
+      "Charge fake credits for premium corpus access. UNSAFE: this moves (fake) money. Idempotent per conversation: the same credits and memo charge once, and a retry returns the existing charge. Use a distinct memo for a distinct purchase.",
     parameters: obj({
       credits: int({ minimum: 1, maximum: 10_000, description: "Credits to charge" }),
       memo: str({ description: "What the charge is for" }),
@@ -214,29 +217,44 @@ export function createTools(config: ToolConfig): AgentTools {
     replay: "unsafe",
     execute: async (args, api, context) => {
       const { credits, memo } = args as { credits: number; memo: string };
-      // Intent before effect: the ledger entry commits first, in the same commit the
-      // task would checkpoint with. A crash after this commit cannot double-charge,
-      // because a rerun finds its own entry; an unsafe tool is never silently rerun.
-      const entry = await api.commit(async (tx) => {
+      // Intent before effect: the ledger entry commits before the provider call. The
+      // model only learns that an interrupted charge "may have partially run", so it
+      // may retry; the retry matches the landed entry by intent and charges nothing.
+      const conversationId = api.conversationId as number;
+      const { entry, existed } = await api.commit(async (tx) => {
         const ledger = await tx.doc(LedgerDoc);
-        const existing = ledger.entries.find((e) => e.taskId === String(api.taskId));
-        if (existing !== undefined) return existing;
+        const existing = ledger.entries.find(
+          (e) => e.conversationId === conversationId && e.credits === credits && e.memo === memo,
+        );
+        if (existing !== undefined) return { entry: { ...existing }, existed: true };
         const created: LedgerEntry = {
           taskId: String(api.taskId),
+          conversationId,
           credits,
           memo,
           at: api.now(),
         };
         ledger.entries.push(created);
-        return created;
+        return { entry: created, existed: false };
       }, context);
+      if (existed) {
+        return {
+          output: [
+            {
+              type: "text" as const,
+              text: `Already charged ${entry.credits} credits for ${JSON.stringify(entry.memo)} in this conversation (ledger entry from tool task ${entry.taskId}). No new charge was made.`,
+            },
+          ],
+          details: entry,
+        };
+      }
       // The simulated provider call: deliberately after the durable intent.
       await sleep(config.chargeDelayMs ?? 300);
       return {
         output: [
           {
             type: "text" as const,
-            text: `Charged ${entry.credits} credits for ${JSON.stringify(entry.memo)}. Ledger entry keyed by tool task ${entry.taskId}.`,
+            text: `Charged ${entry.credits} credits for ${JSON.stringify(entry.memo)}. Ledger entry from tool task ${entry.taskId}.`,
           },
         ],
         details: entry,

@@ -41,7 +41,7 @@ A tool that is never run again automatically after an interruption. The model is
 _Avoid_: Dangerous tool, write tool
 
 **Ledger**:
-The record of charges made by the sample agent, one entry per charge, keyed by the tool task that made it. The ledger is the proof that a charge fired exactly once.
+The record of charges made by the sample agent, one entry per charge, recording the tool task that made it. A charge is idempotent on its intent within a conversation, so a retried charge returns the entry that already landed. The ledger is the proof that a charge fired exactly once.
 _Avoid_: Payment log, transaction history
 
 **Control**:

@@ -26,7 +26,7 @@ A research agent.
 
 - It fans out to three parallel subagents, each a durable task in its own conversation.
 - Safe tools: `search` over a built-in corpus by default, with an optional Exa backend behind `SEARCH_BACKEND=exa`.
-- Unsafe tool: `charge_credits`, fake credits only, writing a Ledger entry keyed by the tool task id.
+- Unsafe tool: `charge_credits`, fake credits only, writing a Ledger entry that records the tool task id and is idempotent on its intent (conversation, credits, memo), so a model retrying an interrupted charge gets the existing entry.
 - Fault tools, first-class in the registry and labelled in the UI: `slow_search` (staged, streaming progress) and `loop_forever` (recruits subagent conversations until something stops it).
 
 ## Core concepts
@@ -58,7 +58,7 @@ Data shapes (five, plus the Ledger):
 - `Tool Intent`: the tool task's own committed checkpoint. Derived view, not a second store.
 - `ControlDoc`: stored document. Budgets and kill state.
 - `ReplayDoc`: stored document on the forked conversation. Provenance of a Fork Replay.
-- `LedgerDoc`: stored document. One entry per charge, keyed by tool task id.
+- `LedgerDoc`: stored document. One entry per charge, recording the tool task and conversation that made it; a repeat of the same intent in the same conversation returns the existing entry.
 
 ## Budgets
 

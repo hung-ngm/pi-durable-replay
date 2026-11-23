@@ -50,7 +50,7 @@ const readLedger = async (harness: Harness) =>
   (await harness.snapshot(LedgerDoc, context))?.entries ?? [];
 
 describe("replay (SPEC tests 3 and 4)", () => {
-  it("test 3: interrupt during a charge, then Resume, leaves exactly one ledger entry", async () => {
+  it("test 3: interrupt during a charge, a model retry, then Resume, leaves exactly one ledger entry", async () => {
     const { harness, root, graph } = await openAgent([
       fauxAssistantMessage(
         [fauxToolCall("charge_credits", { credits: 25, memo: "premium depth" })],
@@ -58,8 +58,13 @@ describe("replay (SPEC tests 3 and 4)", () => {
           stopReason: "toolUse",
         },
       ),
-      // After the abort the model sees the interruption and wraps up run 1.
-      fauxAssistantMessage([fauxText("The charge was interrupted; wrapping up.")]),
+      // After the abort the model only sees "interrupted and may have partially run",
+      // so it retries the same charge. The ledger already holds it.
+      fauxAssistantMessage(
+        [fauxToolCall("charge_credits", { credits: 25, memo: "premium depth" })],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage([fauxText("The charge had already landed; wrapping up.")]),
       // The Resume prompt's response.
       fauxAssistantMessage([fauxText("Resumed without charging again.")]),
     ]);
@@ -97,6 +102,20 @@ describe("replay (SPEC tests 3 and 4)", () => {
       const entries = await readLedger(harness);
       expect(entries).toHaveLength(1);
       expect(entries[0]).toMatchObject({ taskId: String(toolNode.id), credits: 25 });
+
+      // The retry reported the existing charge instead of making a second one.
+      const retryResult = await harness.commit(async (tx) => {
+        const page = await tx.scanEntries({ conversationId: root.id }, 100);
+        return page.items
+          .flatMap((entry) => entry.model ?? [])
+          .find(
+            (message) =>
+              message.role === "toolResult" &&
+              message.toolName === "charge_credits" &&
+              JSON.stringify(message.content).includes("Already charged"),
+          );
+      }, context);
+      expect(retryResult).toBeDefined();
     } finally {
       await harness.close(context);
     }
