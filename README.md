@@ -19,10 +19,10 @@ This is a sample, not a production service. It intentionally has no authenticati
 
 ## Run it locally
 
-You need Node.js 22.19 or newer, pnpm 11, and an OpenAI API key.
+You need Bun 1.4 or newer and an OpenAI API key. Tests run on Vitest (invoked through Bun) because the Cloudflare workers pool has no bun test equivalent.
 
 ```sh
-pnpm install
+bun install
 cp .dev.vars.example .dev.vars
 ```
 
@@ -35,7 +35,7 @@ OPENAI_API_KEY=your-key
 Then start the Worker and React client together:
 
 ```sh
-pnpm dev
+bun run dev
 ```
 
 Open the local URL printed by Vite, create a session, and send a message. Open the session URL in another browser to try the multiplayer flow.
@@ -55,11 +55,11 @@ The code is the documentation for this integration. In particular, the tests are
 ## Commands
 
 ```sh
-pnpm dev        # local development
-pnpm test       # test suite
-pnpm check      # formatting, types, build, and deploy dry run
-pnpm build      # production build
-pnpm preview    # preview the production build locally
+bun run dev     # local development
+bun run test    # test suite (Vitest, via bun run)
+bun run check   # formatting, types, build, and deploy dry run
+bun run build   # production build
+bun run preview # preview the production build locally
 ```
 
 ## Deploy
@@ -67,9 +67,9 @@ pnpm preview    # preview the production build locally
 Authenticate Wrangler, store the API key as a Worker secret, then deploy:
 
 ```sh
-pnpm exec wrangler login
-pnpm exec wrangler secret put OPENAI_API_KEY
-pnpm deploy
+bunx wrangler login
+bunx wrangler secret put OPENAI_API_KEY
+bun run deploy
 ```
 
 Before exposing a deployment, add authentication, authorization, and rate limiting. Anyone who can reach this sample can create sessions that use your model credentials.
