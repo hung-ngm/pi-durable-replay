@@ -56,11 +56,6 @@ export const CORPUS: readonly CorpusDocument[] = [
     text: "A task that crashes on every restart would loop forever. A restart limit ends the task after a fixed number of restarts and reports it as a restart-limit failure. Five restarts is a common default: enough for transient faults, few enough to stop a loop quickly.",
   },
   {
-    id: "corpus:ledger",
-    title: "Ledgers as the source of truth for charges",
-    text: "A ledger is an append-only list of charges, one entry per effect, keyed by the idempotency key that authorized it. The ledger, not the transcript, proves a charge happened exactly once: count entries with the key, and the count is the answer.",
-  },
-  {
     id: "corpus:compaction",
     title: "Compaction keeps the transcript, drops the weight",
     text: "Compaction summarizes older context into a smaller committed entry. It never deletes the underlying history; the full record stays in storage. An agent whose memory survives compaction can be forked from before or after the summary.",

@@ -1,6 +1,7 @@
 # SPEC - pi-durable-replay
 
 Status: agreed in grill-with-docs, 23 Nov 2026 (Rounds 1-3, Q1-Q22).
+Simplified 24 Nov 2026 to three features and one fault, per [docs/plans/0002-simplify-demo.md](docs/plans/0002-simplify-demo.md).
 Staged outside the repo. Per the commit sequence in the implementation plan, this file enters the repo at Unit 3, after the fork is bumped and migrated to Bun and verified green at each step.
 
 ## Problem
@@ -12,9 +13,15 @@ Two real complaints, from the 50-ideas list (23 Nov 2026):
 
 ## Product
 
-A control plane wrapped around one sample Pi Durable agent. The operator watches every run as a task graph, kills runs at four scopes, and replays failures as forks that carry completed tool results forward and never re-fire an unsafe tool without fresh approval.
+A control plane wrapped around one sample Pi Durable agent. It demonstrates three pi-durable features:
 
-This is a devtool demo with a real core, not a mockup. Every claim in the UI is backed by committed state. The charge ledger is the proof of exactly-once, not a log line.
+1. Cost control. Each run has a token budget and a turn budget, and the Budget Kill stops a run that crosses either one.
+2. Kill switch. The composer's **Kill run** button kills the live run and everything it owns. The Control panel's kill log records every kill and its reason.
+3. Replay without re-firing effects. Fork Replay carries completed tool results forward, so `search` and `research` do not run again. `loop_forever` stays blocked in the fork until the operator approves it on the blocked call.
+
+One fault, **Crash now**, evicts the Durable Object. The run resumes through the alarm from its last checkpoint.
+
+This is a devtool demo with a real core, not a mockup. Every claim in the UI is backed by committed state. The kill log and the replay provenance are stored documents, not log lines.
 
 ## Users
 
@@ -24,41 +31,39 @@ V1 has one user, the operator, gated by one bearer token. Any client holding the
 
 A research agent.
 
-- It fans out to three parallel subagents, each a durable task in its own conversation.
-- Safe tools: `search` over the web through Exa when deployed (`SEARCH_BACKEND=exa`, key in the `EXA_API_KEY` Worker secret), and over a built-in corpus in tests and keyless local runs (`SEARCH_BACKEND=corpus`).
-- Unsafe tool: `charge_credits`, fake credits only, writing a Ledger entry that records the tool task id and is idempotent on its intent (conversation, credits, memo), so a model retrying an interrupted charge gets the existing entry.
-- Fault tools, first-class in the registry and labelled in the UI: `slow_search` (staged, streaming progress) and `loop_forever` (recruits subagent conversations until something stops it).
+- Safe tool `search`, over the web through Exa when deployed (`SEARCH_BACKEND=exa`, key in the `EXA_API_KEY` Worker secret), and over a built-in corpus in tests and keyless local runs (`SEARCH_BACKEND=corpus`).
+- Safe tool `research`, which fans out to three parallel subagents. Each subagent is a durable task in its own conversation and has the `search` tool.
+- Unsafe tool `loop_forever`, the one fault tool, labelled in the UI. It recruits subagent conversations that call it again, until a kill or a budget stops it.
 
 ## Core concepts
 
 Defined in GLOSSARY.md. The load-bearing distinctions:
 
 - Resume continues the same run from its last checkpoint. Fork Replay creates a new conversation at a chosen entry. There is no third mode.
-- A Kill applies to an Abort Scope: `run | tool | conversation | all`. Aborting a scope aborts everything it owns, bottom-up, and each owned task cleans up its own effect first.
-- A Budget Kill is a Kill fired by the system at a budget crossing. It produces the same terminal state and the same report as a manual Kill.
+- A Kill applies to a run. Killing a run aborts everything it owns, bottom-up, and each owned task cleans up its own effect first.
+- A Budget Kill is a Kill fired by the system at a budget crossing. It produces the same terminal state and the same kill record as a manual Kill.
 
 ## Architecture (Shape A)
 
-Control plane inside the Session Durable Object. One DO per session owns the harness, all conversations, Control, and the Ledger. No second service, no cross-session store in v1.
+Control plane inside the Session Durable Object. One DO per session owns the harness, all conversations, Control, and the replay documents. No second service, no cross-session store in v1.
 
 Modules:
 
-- `src/session.ts` (from the fork, kept): the DO host. Hibernating WebSockets, serialized alarm arming, view restore after eviction, `resume()` on wake.
-- `src/protocol.ts` (extended): existing commands plus `task.abort`, `conversation.abort`, `run.replayFork`, `control.setBudgets`, `fault.inject`. Strict validation, as upstream.
-- `src/control.ts` (new): `ControlDoc` via `defineDoc` (budgets, kill state), plus a hook that reads Control before each tool round and blocks or aborts at a budget crossing. An approval is recorded durably in the fork's `ReplayDoc`, so it is never asked twice across a crash. A fork whose source conversation charged (per the Ledger) arms the approval gate, whether or not the charge's result is in the carried history.
-- `src/replay.ts` (new): Fork Replay in one function. Reads committed entries and tool task records, forks at the chosen entry, writes a `ReplayDoc` on the new conversation naming source conversation, fork entry, and carried tool results.
+- `src/session.ts` (from the fork, kept): the DO host. Hibernating WebSockets, serialized alarm arming, view restore after eviction, `resume()` on wake, and the Crash now eviction.
+- `src/protocol.ts` (extended): the commands `conversation.open`, `conversation.entries`, `conversation.create`, `prompt.submit`, `task.abort` (kill a run by its generation task), `run.replayFork`, `run.approveUnsafe`, `fault.inject` (Crash now), and `control.setBudgets`. Strict validation, as upstream.
+- `src/control.ts` (new): `ControlDoc` via `defineDoc` (budgets, the kill log, run baselines), `kill()` for one run, and the budget guard `checkBudgets`, which the host calls whenever the task graph or the commit stream moves.
+- `src/replay.ts` (new): Fork Replay in one function. Reads committed entries, forks at the chosen entry, and writes a `ReplayDoc` on the new conversation naming source conversation, fork entry, and carried tool results. A source conversation with a committed `loop_forever` call arms the approval gate, wherever the call sits relative to the fork point. `unsafeGateHook` blocks `loop_forever` while the gate is armed. An approval is recorded durably in the fork's `ReplayDoc`, so it is never asked twice across a crash.
 - `src/agent.ts` (renamed from `chat.ts`): model composition via pi-ai. OpenAI provider, default model as shipped by the fork, changeable per conversation.
-- `src/tools.ts` (replaced): `search`, `charge_credits`, `slow_search`, `loop_forever`. Demo tools from the fork are deleted.
-- Client (React): the chat surfaces render through assistant-ui over the session reducer (ADR 0005), styled with Tailwind v4 and copied shadcn components (ADR 0006). The blocked `charge_credits` call in a Fork Replay carries the **Approve charge** card. `ActivityPanel` gains abort buttons and budget state. One new `ControlPanel` holds budgets, fault injection, replay, the Ledger, and usage.
+- `src/tools.ts` (replaced): `search`, `research`, `loop_forever`. Demo tools from the fork are deleted.
+- Client (React): the chat surfaces render through assistant-ui over the session reducer (ADR 0005), styled with Tailwind v4 and copied shadcn components (ADR 0006). The composer's stop button is **Kill run**. The blocked `loop_forever` call in a Fork Replay carries the **Approve loop** card. `ActivityPanel` shows the task graph and is read-only. `ControlPanel` holds budgets, usage, Crash now, the kill log, and replay provenance.
 
-Data shapes (five, plus the Ledger):
+Data shapes (five):
 
 - `Session`: one DO, one SQLite store (pi-durable's Cloudflare storage).
 - `Run`: derived from the task graph. Not stored separately.
 - `Tool Intent`: the tool task's own committed checkpoint. Derived view, not a second store.
-- `ControlDoc`: stored document. Budgets and kill state.
-- `ReplayDoc`: stored document on the forked conversation. Provenance of a Fork Replay.
-- `LedgerDoc`: stored document. One entry per charge, recording the tool task and conversation that made it; a repeat of the same intent in the same conversation returns the existing entry.
+- `ControlDoc`: stored document. Budgets, the kill log, and the baseline of each live run.
+- `ReplayDoc`: stored document on the forked conversation. Provenance of a Fork Replay and its approval state.
 
 ## How the system works
 
@@ -84,12 +89,11 @@ flowchart LR
     Socket["hibernating WebSockets<br/>src/protocol.ts commands"]
     Harness["pi-durable Harness"]
     Guard["budget guard<br/>src/control.ts"]
-    Watch["crash-loop watcher<br/>src/faults.ts"]
     Agent["research agent<br/>src/agent.ts + src/tools.ts"]
     Gate["approval gate hook<br/>src/replay.ts"]
     subgraph SQLite["SQLite store (one per session)"]
       Transcript["conversations, entries,<br/>task graph"]
-      Docs["ControlDoc, LedgerDoc,<br/>ReplayDoc, FaultDoc,<br/>CrashDoc, pi.usage"]
+      Docs["ControlDoc, ReplayDoc,<br/>pi.usage"]
     end
   end
 
@@ -107,7 +111,6 @@ flowchart LR
   Agent -- "model calls" --> OpenAI
   Harness <--> SQLite
   Harness -- "watchTaskGraph" --> Guard
-  Harness -- "watchTaskGraph" --> Watch
   Harness -- "wake()" --> Alarm
   Alarm -- "alarm() calls resume()" --> Harness
 ```
@@ -133,20 +136,21 @@ sequenceDiagram
   S-->>Tab: 101, then session.snapshot
 ```
 
-### A run, its owned work, and the Abort Scopes
+### A run, its owned work, and the run kill
 
-A run is one live `pi.generation` task in an ownerless conversation. Tool calls are tool tasks owned by the generation. `research` creates three conversations owned by its tool task. A Kill aborts a scope and everything it owns, bottom-up.
+A run is one live `pi.generation` task in an ownerless conversation. Tool calls are tool tasks owned by the generation. `research` creates three conversations owned by its tool task, and `loop_forever` creates one per round. A Kill aborts the run and everything it owns, bottom-up. **Kill run** sends `task.abort` with the generation's task id, and the budget guard calls the same `kill()`.
 
 ```mermaid
 flowchart TD
-  Root["Ownerless conversation<br/>(scope: conversation)"]
-  Gen["pi.generation task<br/>(scope: run)"]
-  T1["pi.tool: search<br/>(scope: tool)"]
-  T2["pi.tool: research<br/>(scope: tool)"]
-  T3["pi.tool: charge_credits<br/>(scope: tool)"]
+  Root["Ownerless conversation"]
+  Gen["pi.generation task<br/>(the run, the kill target)"]
+  T1["pi.tool: search"]
+  T2["pi.tool: research"]
+  T3["pi.tool: loop_forever"]
   C1["owned conversation:<br/>evidence for"]
   C2["owned conversation:<br/>limitations"]
   C3["owned conversation:<br/>costs"]
+  L1["owned conversations:<br/>one per loop round"]
   Root --> Gen
   Gen --> T1
   Gen --> T2
@@ -154,7 +158,7 @@ flowchart TD
   T2 --> C1
   T2 --> C2
   T2 --> C3
-  All["Kill all: every ownerless conversation"] -.-> Root
+  T3 --> L1
 ```
 
 The budget guard runs whenever the task graph or the commit stream moves. When it first sees a run, it records a baseline: the subtree's tokens and turns, plus the budgets in force at that moment. It judges the run against that snapshot, so a budget edit applies to the next run only.
@@ -169,74 +173,50 @@ sequenceDiagram
   H->>G: task graph or commit changed
   G->>G: usage = subtree pi.usage tokens and assistant turns - baseline
   alt usage crosses the snapshot budget
-    G->>C: record Kill {scope: run, reason: budget, budget: tokens or turns}
+    G->>C: record Kill {reason: budget, budget: tokens or turns}
     G->>H: abortTask(generation), owned work aborts bottom-up
   end
 ```
 
-### A charge lands exactly once
-
-`charge_credits` commits its Ledger entry before the provider call. The entry is idempotent on its intent: conversation, credits, and memo. An interrupted unsafe tool is never rerun by the harness. If the model retries the charge itself, the retry finds the landed entry and charges nothing.
-
-```mermaid
-sequenceDiagram
-  participant M as Model
-  participant T as charge_credits tool task
-  participant L as LedgerDoc
-  participant P as Provider (simulated)
-  M->>T: charge_credits {credits: 25, memo}
-  T->>L: commit entry {taskId, conversationId, credits, memo}
-  T->>P: provider call (300 ms window)
-  Note over T,P: Kill or crash lands here
-  T-->>M: "interrupted and may have partially run" (not rerun: replay unsafe)
-  M->>T: retry charge_credits {credits: 25, memo}
-  T->>L: find entry with the same conversation, credits, and memo
-  L-->>T: entry already exists
-  T-->>M: "Already charged ... No new charge was made."
-```
-
 ### Fork Replay and the approval gate
 
-Fork Replay forks the source conversation at a chosen entry and writes a `ReplayDoc` on the new conversation. Committed tool results before the fork point are history in the fork, so their tools do not run again. The gate arms from the Ledger, not from the carried results. A charge whose result sits after the fork point, or never committed, still blocks.
+Fork Replay forks the source conversation at a chosen entry and writes a `ReplayDoc` on the new conversation. Committed tool results before the fork point are history in the fork, so their tools do not run again. The gate arms from the source conversation's committed `loop_forever` calls, not from the carried results. A tool call commits before its tool runs, so the call proves the loop started. A loop whose call sits after the fork point still blocks.
 
 ```mermaid
 sequenceDiagram
   participant Op as Operator
   participant S as Session DO
   participant R as replayFork (src/replay.ts)
-  participant L as LedgerDoc
   participant F as Forked conversation
   participant Gate as unsafeGateHook
   Op->>S: run.replayFork {conversationId, entryId}
   S->>R: replayFork(source, entryId)
   R->>R: scan tool results up to entryId (carried)
+  R->>R: scan the whole source for a loop_forever call
   R->>F: forkConversation(source, entryId)
-  R->>L: any entry with conversationId = source?
   R->>F: ReplayDoc {source, forkEntryId, carried, pendingUnsafeApproval}
-  F->>Gate: model calls charge_credits
+  F->>Gate: model calls loop_forever
   Gate-->>F: blocked while pendingUnsafeApproval
-  Op->>S: run.approveUnsafe (Approve charge on the blocked call)
+  Op->>S: run.approveUnsafe (Approve loop on the blocked call)
   S->>F: ReplayDoc.pendingUnsafeApproval = false
-  F->>Gate: model calls charge_credits
-  Gate-->>F: allowed, one new Ledger entry
+  F->>Gate: model calls loop_forever
+  Gate-->>F: allowed, the loop runs until a kill or a budget stops it
 ```
 
-### Recovery after eviction or a crash
+### Recovery after Crash now
 
-Memory is lost on eviction. Storage is not. The host arms the DO alarm from `harness.wake()` before any work can start. A new request or the alarm reopens the Harness, and `resume()` continues each task from its last committed checkpoint. A safe tool reruns. An unsafe tool reports that it was interrupted. A task cut off `restartLimit` (5) times in a row ends with `restart_limit`.
+Memory is lost on eviction. Storage is not. The host arms the DO alarm from `harness.wake()` before any work can start. **Crash now** sends `fault.inject`. The host replies, arms an alarm 250 ms ahead, and calls `ctx.abort()`. The alarm reopens the Harness, and `resume()` continues each task from its last committed checkpoint. A safe tool reruns. An unsafe tool reports that it was interrupted.
 
 ```mermaid
 stateDiagram-v2
   [*] --> Running: prompt.submit
-  Running --> Evicted: eviction, crash, or ctx.abort
+  Running --> Evicted: Crash now, eviction, or a crash
   Evicted --> Reopened: alarm() or a new request
   Reopened --> Running: resume() from the last checkpoint
   Running --> Done: final answer
   Running --> Killed: Kill (manual or budget)
-  Reopened --> RestartLimit: cut off 5 times in a row
   Done --> [*]
   Killed --> [*]
-  RestartLimit --> [*]
 ```
 
 ## Budgets
@@ -245,12 +225,7 @@ Default per run: 100,000 tokens or 30 turns, whichever comes first. Stored in `C
 
 ## Fault demo
 
-Local Bun mode: a real `kill -9` mid-tool-call, then reopen and Resume.
-Cloudflare mode: three injected faults from one panel.
-
-1. An interrupted unsafe tool. On resume it is reported interrupted, never re-fired, and the Ledger still shows one entry.
-2. A crash-loop tool hitting the restart limit (default 5), ending with a `restart_limit` report.
-3. A Durable Object eviction, woken through the alarm, resuming mid-run. Eviction in tests uses `evictDurableObject` from `cloudflare:test`, as in the fork's recovery tests.
+One injected fault, **Crash now**, in the Control panel. It evicts the Durable Object mid-run. The object wakes through its alarm and resumes the run from its last checkpoint. Eviction in tests uses `evictDurableObject` from `cloudflare:test`, as in the fork's recovery tests.
 
 ## Toolchain
 
@@ -268,14 +243,14 @@ Cloudflare Workers, name `pi-durable-replay`, first deploy to its `workers.dev` 
 
 ## Acceptance tests (behavior, not implementation)
 
-1. Kill a run during `slow_search`. The run ends in the kill terminal state, owned tasks end bottom-up, and a report reaches the client.
-2. Start `loop_forever` with default budgets. A Budget Kill ends it. The UI shows which budget fired.
-3. Run a research task that charges credits, interrupt it during or after the charge, then Resume. The Ledger holds exactly one entry for that tool task.
-4. Fail a run after two safe tools complete. Fork Replay from the entry before the failure. The two completed tool results are carried forward, neither safe tool runs again, and the unsafe tool does not run without fresh approval.
-5. Evict the DO mid-generation in a test. The run resumes after the alarm and answers.
-6. Crash-loop a tool five times. It ends with `restart_limit` and does not run a sixth time.
-7. Restart the local Bun harness with `kill -9` mid-tool-call. Safe tools rerun, unsafe tools are reported interrupted.
-8. Change budgets in the Control Panel. The run in flight keeps its budgets. The next run uses the new ones.
+Renumbered on 24 Nov 2026. Each test names the file that covers it and, in quotes, the number its test name still uses from the original list.
+
+1. Kill a run during `loop_forever`. The run ends in the kill terminal state, owned tasks end bottom-up, and the kill log records it. (`test/control.test.ts`, "test 1")
+2. Start `loop_forever` with default budgets. A Budget Kill ends it. The kill record names the budget that fired. (`test/control.test.ts`, "test 2")
+3. Fail a run after two safe tools complete. Fork Replay from the newest entry. The two completed tool results are carried forward, and neither safe tool runs again. (`test/replay.test.ts`, "test 4")
+4. Run `search`, then `loop_forever`, and kill the run. Fork Replay from the entry after `search`, before the `loop_forever` call. `search` is carried and does not run again. `loop_forever` is blocked until the operator approves it, and then it runs. (`test/replay.test.ts`, the `loop_forever` gate test)
+5. Evict the DO mid-generation in a test. The run resumes after the alarm and answers. (`test/faults.test.ts`, "test 5")
+6. Change budgets in the Control Panel. The run in flight keeps its budgets. The next run uses the new ones. (`test/control.test.ts`, "test 8")
 
 ## Out of scope for v1 (the cut line)
 

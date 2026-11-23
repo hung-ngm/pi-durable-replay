@@ -1,6 +1,6 @@
 # Plan: simplify the demo to three features
 
-Status: draft, 24 Nov 2026. Awaiting the operator's go.
+Status: landed, 24 Nov 2026. Units 1 to 5 shipped to main and were checked on the deployed app.
 
 ## What changes
 
