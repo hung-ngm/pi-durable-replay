@@ -3,6 +3,7 @@ import type { BlockedReason, TaskGraph, TaskGraphNode } from "@earendil-works/pi
 import { Button } from "./components/ui/button.tsx";
 
 interface ActivityPanelProps {
+  readonly className: string;
   readonly graph: TaskGraph | undefined;
   readonly activeConversationId: number | undefined;
   readonly onClose: () => void;
@@ -37,6 +38,7 @@ const taskStatus = (node: TaskGraphNode): string => {
 };
 
 export function ActivityPanel({
+  className,
   graph,
   activeConversationId,
   onClose,
@@ -142,7 +144,7 @@ export function ActivityPanel({
 
   const countLabel = `${nodes.length} active task${nodes.length === 1 ? "" : "s"}`;
   return (
-    <aside className="activity-panel" id="activity-panel" aria-labelledby="activity-heading">
+    <aside className={className} id="activity-panel" aria-labelledby="activity-heading">
       <header className="activity-header">
         <div>
           <h2 id="activity-heading">Activity</h2>

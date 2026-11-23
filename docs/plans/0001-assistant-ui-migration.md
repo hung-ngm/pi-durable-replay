@@ -284,6 +284,8 @@ As built: preflight is on, and a small base layer in `globals.css` sets headings
 
 ## PR5. Conversation list on assistant-ui
 
+As built: the URL now follows the active conversation from one effect, so New conversation, Fork, and Fork Replay also update `?conversation=`; before, only list clicks did. The workspace grid moved from `styles.css` into classes; only the Activity panel's inner rules remain there. Below 48rem the sidebar renders inside the sheet instead of beside the thread, so its ids exist once. JS gzip 243,369, which is 10,861 over R4 and 2.7 KB above this unit's estimate; Radix Dialog's focus scope and scroll lock and the thread-list primitives account for it (inferred, not split out). The total stays under the 280,000 budget. CSS 8,432.
+
 **Why.** The sidebar list is a thread list. Moving it onto `ThreadListPrimitive` gives keyboard navigation and active state from the runtime, not from hand-kept `aria-current`. It is built in the example's sidebar style, which collapses to an off-canvas sheet on phones.
 
 - [ ] Depends on: R4.

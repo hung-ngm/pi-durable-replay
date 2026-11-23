@@ -1,25 +1,22 @@
 import { AssistantRuntimeProvider, useAuiState } from "@assistant-ui/react";
-import { type MouseEvent, useEffect, useEffectEvent, useRef, useState } from "react";
-import { type ConversationSummary, ROOT_CONVERSATION_ID } from "../protocol.ts";
+import { MenuIcon } from "lucide-react";
+import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
+import { ROOT_CONVERSATION_ID } from "../protocol.ts";
 import type { ConversationSnapshot } from "./session-state.ts";
 import { ActivityPanel } from "./ActivityPanel.tsx";
 import { Button } from "./components/ui/button.tsx";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "./components/ui/sheet.tsx";
 import { ControlPanel } from "./ControlPanel.tsx";
+import { ConversationList } from "./ConversationList.tsx";
 import { Thread } from "./Thread.tsx";
+import { cn } from "./lib/utils.ts";
 import { type PiSession, usePiSession } from "./usePiSession.ts";
-import { useSessionRuntime } from "./useSessionRuntime.ts";
+import { conversationLabel, useSessionRuntime } from "./useSessionRuntime.ts";
 
 interface ChatSessionProps {
   readonly sessionId: string;
   readonly username: string;
 }
-
-const conversationLabel = ({ id, parent, owner }: ConversationSummary): string => {
-  if (id === ROOT_CONVERSATION_ID) return `Main conversation (id: ${id})`;
-  if (owner !== undefined) return `Subagent (id: ${id}, owner: ${owner.conversationId})`;
-  if (parent !== undefined) return `Fork (id: ${id}, from: ${parent.at})`;
-  return `Conversation (id: ${id})`;
-};
 
 const statusLabel = {
   connecting: "Connecting",
@@ -36,10 +33,21 @@ const conversationIdFromLocation = (): number | undefined => {
   return Number.isSafeInteger(id) && id > 0 ? id : undefined;
 };
 
+const wideQuery = "(width >= 48rem)";
+
+const subscribeWide = (onChange: () => void): (() => void) => {
+  const query = window.matchMedia(wideQuery);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+};
+
+const isWide = (): boolean => window.matchMedia(wideQuery).matches;
+
 export function ChatSession({ sessionId, username }: ChatSessionProps) {
   const [initialConversationId] = useState(conversationIdFromLocation);
   const session = usePiSession(sessionId, username, initialConversationId);
-  const runtime = useSessionRuntime(session);
+  const wide = useSyncExternalStore(subscribeWide, isWide);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const activityToggleRef = useRef<HTMLButtonElement | null>(null);
   const activityCloseRef = useRef<HTMLButtonElement | null>(null);
@@ -49,6 +57,12 @@ export function ChatSession({ sessionId, username }: ChatSessionProps) {
   const activeSummary = session.conversations.find(({ id }) => id === activeConversationId);
   const activityCount = Object.keys(session.activity?.tasks ?? {}).length;
   const isConnected = session.status === "connected";
+
+  const openConversation = (conversationId: number): void => {
+    setMenuOpen(false);
+    if (conversationId !== session.activeConversationId) session.openConversation(conversationId);
+  };
+  const runtime = useSessionRuntime(session, openConversation);
 
   const openLinkedConversation = useEffectEvent(() => {
     const conversationId = conversationIdFromLocation() ?? ROOT_CONVERSATION_ID;
@@ -61,24 +75,18 @@ export function ChatSession({ sessionId, username }: ChatSessionProps) {
   });
 
   useEffect(() => {
+    if (activeConversationId === undefined) return;
+    const linked = conversationIdFromLocation() ?? ROOT_CONVERSATION_ID;
+    if (linked !== activeConversationId) {
+      window.history.pushState(null, "", `?conversation=${activeConversationId}`);
+    }
+  }, [activeConversationId]);
+
+  useEffect(() => {
     const handlePopState = (): void => openLinkedConversation();
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
-
-  const followConversationLink = (
-    event: MouseEvent<HTMLAnchorElement>,
-    conversationId: number,
-  ): void => {
-    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-      return;
-    }
-    event.preventDefault();
-    if (conversationId !== session.activeConversationId) {
-      window.history.pushState(null, "", event.currentTarget.href);
-      session.openConversation(conversationId);
-    }
-  };
 
   const compactActivityLayout = (): boolean => window.matchMedia("(width < 75rem)").matches;
 
@@ -95,142 +103,155 @@ export function ChatSession({ sessionId, username }: ChatSessionProps) {
     requestAnimationFrame(() => activityToggleRef.current?.focus());
   };
 
+  const sidebar = (
+    <>
+      <header className="flex flex-col gap-1 p-4">
+        <a className="text-muted-foreground text-sm" href="/">
+          pi-durable-replay
+        </a>
+        <h1>Session</h1>
+        <p className="text-muted-foreground text-sm">
+          Joining as <strong className="text-foreground font-medium">{username}</strong>
+        </p>
+        <p className="text-sm" role="status">
+          {statusLabel[session.status]}
+        </p>
+      </header>
+
+      {session.error === undefined ? null : (
+        <p className="text-destructive px-4 pb-4 text-sm" role="alert">
+          {session.error}
+        </p>
+      )}
+
+      <ConversationList disabled={!isConnected} />
+
+      <ControlPanel
+        control={session.control}
+        usage={activeConversation?.usage}
+        activeConversationId={activeConversationId}
+        onSetBudgets={session.setBudgets}
+        onAbortConversation={session.abortConversation}
+        onAbortSession={session.abortSession}
+        onApproveUnsafe={session.approveUnsafe}
+        onInjectFault={session.injectFault}
+      />
+    </>
+  );
+
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <TypingPresence session={session} />
-      <div
-        className={`session-workspace${activityOpen ? " session-workspace--activity-open" : ""}`}
-      >
-        <aside className="session-sidebar">
-          <header className="session-header flex flex-col gap-1">
-            <a className="text-muted-foreground text-sm" href="/">
-              pi-durable-replay
-            </a>
-            <h1>Session</h1>
-            <p className="text-muted-foreground text-sm">
-              Joining as <strong className="text-foreground font-medium">{username}</strong>
-            </p>
-            <p className="connection-status text-sm" role="status">
-              {statusLabel[session.status]}
-            </p>
-          </header>
-
-          {session.error === undefined ? null : (
-            <p className="session-error text-destructive text-sm" role="alert">
-              {session.error}
-            </p>
+      <Sheet open={menuOpen && !wide} onOpenChange={setMenuOpen}>
+        <div
+          className={cn(
+            "grid h-dvh grid-rows-[minmax(0,1fr)] overflow-hidden md:grid-cols-[16rem_minmax(0,1fr)]",
+            activityOpen && "min-[75rem]:grid-cols-[16rem_minmax(32rem,1fr)_minmax(18rem,24rem)]",
+          )}
+        >
+          {wide ? (
+            <aside className="flex min-h-0 flex-col overflow-y-auto overscroll-contain border-e">
+              {sidebar}
+            </aside>
+          ) : (
+            <SheetContent
+              className="overflow-y-auto overscroll-contain"
+              aria-describedby={undefined}
+            >
+              <SheetTitle className="sr-only">Session menu</SheetTitle>
+              {sidebar}
+            </SheetContent>
           )}
 
-          <nav className="conversation-navigation" aria-labelledby="conversations-heading">
-            <div className="conversation-navigation-header flex flex-col gap-2">
-              <h2 id="conversations-heading">Conversations</h2>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={session.createConversation}
-                disabled={!isConnected}
-              >
-                New conversation
-              </Button>
-            </div>
-            <div className="conversation-list" tabIndex={0}>
-              {session.conversations.length === 0 ? (
-                <p className="text-muted-foreground text-sm">No conversations yet.</p>
-              ) : (
-                <ul className="flex flex-col gap-0.5">
-                  {session.conversations.map((conversation) => (
-                    <li key={conversation.id}>
-                      <a
-                        className="hover:bg-accent aria-[current=page]:bg-accent block rounded-md px-2 py-1.5 text-sm no-underline aria-[current=page]:font-medium"
-                        href={`?conversation=${conversation.id}`}
-                        aria-current={conversation.id === activeConversationId ? "page" : undefined}
-                        onClick={(event) => followConversationLink(event, conversation.id)}
-                      >
-                        {conversationLabel(conversation)}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </nav>
-
-          <ControlPanel
-            control={session.control}
-            usage={activeConversation?.usage}
-            activeConversationId={activeConversationId}
-            onSetBudgets={session.setBudgets}
-            onAbortConversation={session.abortConversation}
-            onAbortSession={session.abortSession}
-            onApproveUnsafe={session.approveUnsafe}
-            onInjectFault={session.injectFault}
-          />
-        </aside>
-
-        <main className="conversation-view">
-          <header className="conversation-header">
-            <div className="conversation-titlebar">
-              <h2 ref={conversationHeadingRef} id="transcript-heading" tabIndex={-1}>
-                {activeSummary === undefined ? "Conversation" : conversationLabel(activeSummary)}
-              </h2>
-              <Button
-                ref={activityToggleRef}
-                variant="outline"
-                className="min-h-11"
-                aria-controls="activity-panel"
-                aria-expanded={activityOpen}
-                onClick={toggleActivity}
-              >
-                Activity{" "}
-                <span
-                  aria-hidden="true"
-                  className="bg-background inline-grid min-w-6 place-items-center rounded-full px-1.5 text-xs tabular-nums"
-                >
-                  {activityCount}
-                </span>
-              </Button>
-            </div>
-            {activeConversation === undefined ? null : (
-              <ConversationDetails conversation={activeConversation} />
+          <main
+            className={cn(
+              "grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden",
+              activityOpen && "hidden min-[75rem]:grid",
             )}
-          </header>
+          >
+            <header className="border-b p-4">
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  {wide ? null : (
+                    <SheetTrigger asChild>
+                      <Button variant="ghost" size="icon" className="size-11 shrink-0">
+                        <MenuIcon aria-hidden />
+                        <span className="sr-only">Open session menu</span>
+                      </Button>
+                    </SheetTrigger>
+                  )}
+                  <h2
+                    ref={conversationHeadingRef}
+                    id="transcript-heading"
+                    tabIndex={-1}
+                    className="min-w-0 truncate"
+                  >
+                    {activeSummary === undefined
+                      ? "Conversation"
+                      : conversationLabel(activeSummary)}
+                  </h2>
+                </div>
+                <Button
+                  ref={activityToggleRef}
+                  variant="outline"
+                  className="min-h-11"
+                  aria-controls="activity-panel"
+                  aria-expanded={activityOpen}
+                  onClick={toggleActivity}
+                >
+                  Activity{" "}
+                  <span
+                    aria-hidden="true"
+                    className="bg-background inline-grid min-w-6 place-items-center rounded-full px-1.5 text-xs tabular-nums"
+                  >
+                    {activityCount}
+                  </span>
+                </Button>
+              </div>
+              {activeConversation === undefined ? null : (
+                <ConversationDetails conversation={activeConversation} />
+              )}
+            </header>
 
-          <Thread
-            conversation={activeConversation}
-            onFork={(entryId) => {
-              if (activeConversationId !== undefined) {
-                session.forkConversation(activeConversationId, entryId);
+            <Thread
+              conversation={activeConversation}
+              onFork={(entryId) => {
+                if (activeConversationId !== undefined) {
+                  session.forkConversation(activeConversationId, entryId);
+                }
+              }}
+              onReplay={(entryId) => {
+                if (activeConversationId !== undefined) {
+                  session.replayFork(activeConversationId, entryId);
+                }
+              }}
+              onFillGap={(gap) => {
+                if (activeConversationId !== undefined) session.fillGap(activeConversationId, gap);
+              }}
+            />
+          </main>
+
+          <ActivityPanel
+            className={
+              activityOpen
+                ? "grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden min-[75rem]:border-s"
+                : "hidden"
+            }
+            graph={session.activity}
+            activeConversationId={activeConversationId}
+            onAbortTask={session.abortTask}
+            onClose={closeActivity}
+            closeButtonRef={activityCloseRef}
+            onOpenConversation={(conversationId) => {
+              openConversation(conversationId);
+              if (compactActivityLayout()) {
+                setActivityOpen(false);
+                requestAnimationFrame(() => conversationHeadingRef.current?.focus());
               }
-            }}
-            onReplay={(entryId) => {
-              if (activeConversationId !== undefined) {
-                session.replayFork(activeConversationId, entryId);
-              }
-            }}
-            onFillGap={(gap) => {
-              if (activeConversationId !== undefined) session.fillGap(activeConversationId, gap);
             }}
           />
-        </main>
-
-        <ActivityPanel
-          graph={session.activity}
-          activeConversationId={activeConversationId}
-          onAbortTask={session.abortTask}
-          onClose={closeActivity}
-          closeButtonRef={activityCloseRef}
-          onOpenConversation={(conversationId) => {
-            if (conversationId !== session.activeConversationId) {
-              window.history.pushState(null, "", `?conversation=${conversationId}`);
-              session.openConversation(conversationId);
-            }
-            if (compactActivityLayout()) {
-              setActivityOpen(false);
-              requestAnimationFrame(() => conversationHeadingRef.current?.focus());
-            }
-          }}
-        />
-      </div>
+        </div>
+      </Sheet>
     </AssistantRuntimeProvider>
   );
 }
@@ -280,20 +301,17 @@ function ConversationDetails({ conversation }: { readonly conversation: Conversa
         : `Host default except ${agent.tools.remove.join(", ")}`;
 
   return (
-    <section
-      className="runtime-information text-muted-foreground mt-1 text-xs"
-      aria-label="Runtime information"
-    >
-      <dl>
-        <div className="runtime-primary">
+    <section className="text-muted-foreground mt-1 text-xs" aria-label="Runtime information">
+      <dl className="flex flex-col gap-1">
+        <div className="flex flex-wrap gap-x-2 gap-y-1">
           <RuntimeDatum label="Model" value={model} />
           <RuntimeDatum label="Thinking" value={agent?.thinkingLevel ?? "off"} />
           <RuntimeDatum label="Tokens" value={totals.tokens.toLocaleString()} />
           <RuntimeDatum label="Cost" value={formatCost(totals.cost)} />
         </div>
-        <div className="runtime-tools">
+        <div className="flex min-w-0 gap-1">
           <dt>Tools:</dt>
-          <dd>{tools}</dd>
+          <dd className="[overflow-wrap:anywhere]">{tools}</dd>
         </div>
       </dl>
     </section>
@@ -302,9 +320,9 @@ function ConversationDetails({ conversation }: { readonly conversation: Conversa
 
 function RuntimeDatum({ label, value }: { readonly label: string; readonly value: string }) {
   return (
-    <div>
+    <div className="flex min-w-0 gap-1">
       <dt>{label}:</dt>
-      <dd>{value}</dd>
+      <dd className="[overflow-wrap:anywhere]">{value}</dd>
     </div>
   );
 }
