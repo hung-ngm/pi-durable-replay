@@ -3,6 +3,7 @@ import {
   AuiIf,
   ComposerPrimitive,
   ErrorPrimitive,
+  groupPartByType,
   MessagePrimitive,
   ThreadPrimitive,
   useAuiState,
@@ -14,13 +15,29 @@ import {
   CheckIcon,
   CopyIcon,
   GitForkIcon,
+  LoaderIcon,
   RotateCcwIcon,
   SquareIcon,
   TriangleAlertIcon,
 } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import { MAX_PROMPT_CHARACTERS } from "../protocol.ts";
+import {
+  DisclosureChevron,
+  disclosureContent,
+  disclosureTrigger,
+  ToolBlock,
+  ToolFallback,
+  type ToolRowStatus,
+} from "./components/assistant-ui/tool-fallback.tsx";
+import { ToolGroup } from "./components/assistant-ui/tool-group.tsx";
 import { TooltipIconButton } from "./components/assistant-ui/tooltip-icon-button.tsx";
+import { Button } from "./components/ui/button.tsx";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "./components/ui/collapsible.tsx";
 import { cn } from "./lib/utils.ts";
 import type { ToolArtifact } from "./projection.ts";
 import type { ConversationSnapshot, TranscriptGap } from "./session-state.ts";
@@ -36,6 +53,8 @@ interface ThreadProps {
   readonly onReplay: (entryId: number) => void;
   readonly onFillGap: (gap: TranscriptGap) => void;
 }
+
+const groupByTool = groupPartByType({ "tool-call": ["group-tool"] });
 
 const column = "mx-auto w-full max-w-[44rem] px-4";
 
@@ -204,9 +223,24 @@ function Message({ onFork, onReplay, onFillGap }: Omit<ThreadProps, "conversatio
   const kind = messageKind(id, role);
 
   const parts = (
-    <MessagePrimitive.Parts>
-      {({ part }) => <Part part={part} onFillGap={onFillGap} />}
-    </MessagePrimitive.Parts>
+    <MessagePrimitive.GroupedParts groupBy={groupByTool} indicator="never">
+      {({ part, children }) => {
+        if (part.type === "indicator") return null;
+        if (part.type === "group-tool") {
+          if (part.indices.length === 1) return children;
+          return (
+            <ToolGroup
+              count={part.indices.length}
+              active={part.counts.running + part.counts.requiresAction > 0}
+              failed={part.counts.incomplete > 0}
+            >
+              {children}
+            </ToolGroup>
+          );
+        }
+        return <Part part={part} onFillGap={onFillGap} />;
+      }}
+    </MessagePrimitive.GroupedParts>
   );
   if (kind === "gap") return <div className="flex justify-center">{parts}</div>;
 
@@ -251,7 +285,7 @@ function Message({ onFork, onReplay, onFillGap }: Omit<ThreadProps, "conversatio
       )}
       aria-busy={running}
     >
-      {kind === "assistant" ? (
+      {kind === "assistant" || kind === "note" ? (
         heading
       ) : (
         <p className="m-0 mb-1 text-xs font-medium tracking-wide uppercase">{kindLabel[kind]}</p>
@@ -349,10 +383,11 @@ function Part({
       return <MessageText text={part.text} />;
     case "reasoning":
       return (
-        <details className="reasoning">
-          <summary>Thinking</summary>
-          <MessageText text={part.text} />
-        </details>
+        <Disclosure label="Thinking">
+          <div className="text-muted-foreground ps-6 pt-1 pb-2">
+            <MessageText text={part.text} />
+          </div>
+        </Disclosure>
       );
     case "tool-call":
       return <ToolCard part={part} />;
@@ -375,23 +410,33 @@ function DataPart({
   switch (name) {
     case "pi-gap":
       return (
-        <button
-          className="text-button transcript-load"
-          type="button"
+        <Button
+          variant="outline"
+          size="sm"
+          className="rounded-full"
           onClick={() => onFillGap(data as TranscriptGap)}
         >
           Load missing messages
-        </button>
+        </Button>
       );
     case "pi-context": {
       const note = data as { readonly kind: "compaction" | "reset"; readonly text: string };
       return (
-        <>
-          <p className="context-kind">
-            {note.kind === "compaction" ? "Context summary" : "Context reset"}
-          </p>
-          <MessageText text={note.text} />
-        </>
+        <Collapsible>
+          <div className="flex items-center gap-3">
+            <span aria-hidden className="bg-border h-px flex-1" />
+            <CollapsibleTrigger className={cn(disclosureTrigger, "text-xs")}>
+              {note.kind === "compaction" ? "Context summary" : "Context reset"}
+              <DisclosureChevron className="size-3" />
+            </CollapsibleTrigger>
+            <span aria-hidden className="bg-border h-px flex-1" />
+          </div>
+          <CollapsibleContent className={disclosureContent}>
+            <div className="pt-2">
+              <MessageText text={note.text} />
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
       );
     }
     case "pi-event": {
@@ -400,24 +445,22 @@ function DataPart({
     }
     case "pi-retry": {
       const retry = data as { readonly error: string };
-      return <p role="status">Retrying: {retry.error}</p>;
+      return (
+        <p role="status" className="text-muted-foreground m-0 flex items-center gap-2 text-sm">
+          <LoaderIcon
+            aria-hidden
+            className="size-3.5 shrink-0 animate-spin motion-reduce:animate-none"
+          />
+          Retrying: {retry.error}
+        </p>
+      );
     }
     default:
       return null;
   }
 }
 
-type ToolDisplayStatus = "waiting" | "running" | "completed" | "failed" | "cancelled";
-
-const toolStatusLabel: Record<ToolDisplayStatus, string> = {
-  waiting: "Waiting",
-  running: "Running",
-  completed: "Completed",
-  failed: "Failed",
-  cancelled: "No result",
-};
-
-function toolDisplayStatus(part: ToolCallPart): ToolDisplayStatus {
+function toolRowStatus(part: ToolCallPart): ToolRowStatus {
   if (part.result !== undefined && part.isPreliminary !== true) {
     return part.isError === true ? "failed" : "completed";
   }
@@ -434,41 +477,41 @@ function toolDisplayStatus(part: ToolCallPart): ToolDisplayStatus {
 }
 
 function ToolCard({ part }: { readonly part: ToolCallPart }) {
-  const status = toolDisplayStatus(part);
   const artifact = (part.artifact ?? {}) as ToolArtifact;
   const output = typeof part.result === "string" ? part.result : undefined;
   return (
-    <article
-      className={`tool-execution tool-execution--${status}`}
-      aria-busy={status === "waiting" || status === "running"}
-    >
-      <header>
-        <strong>{part.toolName}</strong>
-        <span className="tool-status">{toolStatusLabel[status]}</span>
-      </header>
+    <ToolFallback toolName={part.toolName} status={toolRowStatus(part)}>
       {Object.keys(part.args).length === 0 ? null : (
-        <details>
-          <summary>Arguments</summary>
-          <pre>{JSON.stringify(part.args, null, 2)}</pre>
-        </details>
+        <ToolBlock label="Arguments">{JSON.stringify(part.args, null, 2)}</ToolBlock>
       )}
-      {output === undefined || output.length === 0 ? null : <MessageText text={output} />}
+      {output === undefined || output.length === 0 ? null : (
+        <ToolBlock label="Result">{output}</ToolBlock>
+      )}
       {artifact.details === undefined ? null : (
-        <details>
-          <summary>Details</summary>
-          <pre>{JSON.stringify(artifact.details, null, 2)}</pre>
-        </details>
+        <ToolBlock label="Details">{JSON.stringify(artifact.details, null, 2)}</ToolBlock>
       )}
       {artifact.diagnostics === undefined || artifact.diagnostics.length === 0 ? null : (
         <Diagnostics diagnostics={artifact.diagnostics} />
       )}
-    </article>
+    </ToolFallback>
+  );
+}
+
+function Disclosure({ label, children }: { readonly label: string; readonly children: ReactNode }) {
+  return (
+    <Collapsible>
+      <CollapsibleTrigger className={disclosureTrigger}>
+        {label}
+        <DisclosureChevron />
+      </CollapsibleTrigger>
+      <CollapsibleContent className={disclosureContent}>{children}</CollapsibleContent>
+    </Collapsible>
   );
 }
 
 function Diagnostics({ diagnostics }: { readonly diagnostics: readonly ToolDiagnostic[] }) {
   return (
-    <ul className="diagnostics">
+    <ul className="m-0 ps-5 text-xs">
       {diagnostics.map((diagnostic, index) => (
         <li key={`${diagnostic.code ?? "diagnostic"}-${index}`}>
           <strong>{capitalize(diagnostic.severity)}</strong>: {diagnostic.message}

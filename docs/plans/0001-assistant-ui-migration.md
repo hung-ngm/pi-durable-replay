@@ -260,6 +260,8 @@ As built: Tailwind's preflight is left out until R4, because it resets the brows
 
 ## R3. Tool rows and pi parts
 
+As built: the registry's `tool-fallback` is 1,337 lines of approval and timeline UI this app does not use, so `tool-fallback.tsx` keeps only its row: the trigger, the collapsible body, and the class lists. Radix sets `data-state`, so the variants read `data-[state=open]`, and the collapsible and shimmer keyframes live in `globals.css`. A row or group follows its status (open while running or failed, closed once done) until the operator toggles it. A single tool call renders without the group. JS gzip 232,093, CSS 7,027.
+
 - [ ] Depends on: R2.
 - [ ] Files: new `src/client/components/assistant-ui/tool-fallback.tsx` and `tool-group.tsx`, `src/client/Thread.tsx`, `src/client/styles.css`.
 - [ ] Change: tool-call parts render the example's collapsible row, grouped with `MessagePrimitive.GroupedParts` when consecutive, with our status words as row labels (Running tool, Used tool, Failed tool, Cancelled tool) and diagnostics in the body. Run failures, compaction and reset notes, gaps, queued inputs, typing and compaction status, and the retry notice take the styles in the decisions table.

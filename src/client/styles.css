@@ -280,52 +280,6 @@ body:has(.session-workspace) {
   overflow-wrap: anywhere;
 }
 
-.tool-execution {
-  padding-block: 0.625rem;
-  border-block: 1px solid color-mix(in srgb, currentColor 16%, transparent);
-}
-
-.tool-execution header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.5rem;
-}
-
-.tool-status {
-  font-size: 0.875em;
-}
-
-.tool-execution--waiting .tool-status,
-.tool-execution--running .tool-status {
-  font-weight: 600;
-}
-
-.tool-execution details {
-  margin-block-start: 0.5rem;
-}
-
-.tool-execution summary {
-  cursor: pointer;
-}
-
-.tool-execution p,
-.tool-execution pre {
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-
-.tool-execution pre {
-  max-inline-size: 100%;
-  overflow-x: auto;
-  padding: 0.625rem;
-  background: color-mix(in srgb, currentColor 5%, transparent);
-}
-
-.diagnostics {
-  padding-inline-start: 1.25rem;
-}
-
 @media (width < 44rem) {
   .session-workspace {
     grid-template-columns: 1fr;
