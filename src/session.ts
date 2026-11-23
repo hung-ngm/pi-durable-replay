@@ -15,7 +15,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { openDurableObjectSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/cloudflare";
 import { normalizeUsername } from "./identity.ts";
-import { createChatHarnessOptions } from "./chat.ts";
+import { createAgentHarnessOptions } from "./agent.ts";
 import {
   InvalidClientCommand,
   MAX_CLIENT_FRAME_CHARACTERS,
@@ -174,7 +174,10 @@ export class Session extends DurableObject<Env> {
     const harness = await Harness.open(
       storage,
       {
-        ...createChatHarnessOptions(),
+        ...createAgentHarnessOptions({
+          searchBackend: this.env.SEARCH_BACKEND ?? "corpus",
+          ...(this.env.EXA_API_KEY === undefined ? {} : { exaApiKey: this.env.EXA_API_KEY }),
+        }),
         // `kind` says what happened, e.g. `task_faulted` or `task_interrupted`, with the task and extension.
         onReport: ({ error, ...report }) =>
           reportError("Harness reported a failure", error, report),

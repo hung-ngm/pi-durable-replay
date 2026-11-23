@@ -15,7 +15,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { openDurableObjectSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/cloudflare";
 import { describe, expect, it } from "vitest";
-import { createChatHarnessOptions } from "../src/chat.ts";
+import { createAgentHarnessOptions } from "../src/agent.ts";
 import { expectAlarm } from "./alarm.ts";
 import worker from "../src/index.ts";
 import { MAX_CLIENT_FRAME_CHARACTERS, queuedInputs } from "../src/protocol.ts";
@@ -135,7 +135,7 @@ async function seedSession<T>(
 }
 
 const configureOfflineModel = (sessionId: string, conversationId: number = 1): Promise<void> =>
-  seedSession(sessionId, createChatHarnessOptions(), async (harness) => {
+  seedSession(sessionId, createAgentHarnessOptions(), async (harness) => {
     await harness.root(BACKGROUND_CONTEXT);
     const conversation = await harness.conversation(
       conversationId as ConversationId,
@@ -451,7 +451,7 @@ describe("chat application", () => {
           "pi.agent": {
             model: { provider: "openai", modelId: "gpt-6-luna" },
             thinkingLevel: "off",
-            tools: [],
+            tools: ["search", "research", "charge_credits", "slow_search", "loop_forever"],
           },
         },
       },
@@ -778,7 +778,7 @@ describe("chat application", () => {
   it("lists subagent conversations with their owner", async () => {
     const sessionId = "owned-conversations-listed";
     // A task-owned conversation, as a tool task creates for its subagent.
-    const chatOptions = createChatHarnessOptions();
+    const chatOptions = createAgentHarnessOptions();
     const fixtureRegistry = createRegistry();
     fixtureRegistry.install(defineExtension({ name: "test", tasks: [SleepingTask] }));
     const childId = await seedSession(
