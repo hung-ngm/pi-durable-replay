@@ -1,23 +1,12 @@
-import {
-  type KeyboardEvent,
-  type MouseEvent,
-  type SubmitEvent,
-  useEffect,
-  useEffectEvent,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
-import {
-  MAX_PROMPT_CHARACTERS,
-  type ConversationSummary,
-  ROOT_CONVERSATION_ID,
-} from "../protocol.ts";
+import { AssistantRuntimeProvider, useAuiState } from "@assistant-ui/react";
+import { type MouseEvent, useEffect, useEffectEvent, useRef, useState } from "react";
+import { type ConversationSummary, ROOT_CONVERSATION_ID } from "../protocol.ts";
 import type { ConversationSnapshot } from "./session-state.ts";
 import { ActivityPanel } from "./ActivityPanel.tsx";
 import { ControlPanel } from "./ControlPanel.tsx";
-import { MessageText, TranscriptList } from "./Transcript.tsx";
-import { usePiSession } from "./usePiSession.ts";
+import { Thread } from "./Thread.tsx";
+import { type PiSession, usePiSession } from "./usePiSession.ts";
+import { useSessionRuntime } from "./useSessionRuntime.ts";
 
 interface ChatSessionProps {
   readonly sessionId: string;
@@ -39,12 +28,6 @@ const statusLabel = {
 
 const TYPING_IDLE_MS = 1_500;
 
-const typingLabel = (usernames: readonly string[]): string => {
-  if (usernames.length === 1) return `${usernames[0]} is typing…`;
-  if (usernames.length === 2) return `${usernames[0]}, ${usernames[1]} are typing…`;
-  return usernames.length > 2 ? "Many are typing…" : "";
-};
-
 const conversationIdFromLocation = (): number | undefined => {
   const value = new URLSearchParams(window.location.search).get("conversation");
   if (value === null || !/^\d+$/.test(value)) return undefined;
@@ -55,118 +38,16 @@ const conversationIdFromLocation = (): number | undefined => {
 export function ChatSession({ sessionId, username }: ChatSessionProps) {
   const [initialConversationId] = useState(conversationIdFromLocation);
   const session = usePiSession(sessionId, username, initialConversationId);
-  const [draft, setDraft] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const runtime = useSessionRuntime(session);
   const [activityOpen, setActivityOpen] = useState(false);
   const activityToggleRef = useRef<HTMLButtonElement | null>(null);
   const activityCloseRef = useRef<HTMLButtonElement | null>(null);
   const conversationHeadingRef = useRef<HTMLHeadingElement | null>(null);
-  const transcriptRef = useRef<HTMLElement | null>(null);
-  const pinToLatestRef = useRef(true);
-  const renderedConversationRef = useRef<number | undefined>(undefined);
-  const transcriptHeightRef = useRef(0);
-  const autoScrollingRef = useRef(false);
-  const autoScrollFrameRef = useRef<number | undefined>(undefined);
-  const autoScrollStartRef = useRef(0);
-  const autoScrollTargetRef = useRef(0);
-  const autoScrollStartedAtRef = useRef(0);
-  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const typingConversationRef = useRef<number | undefined>(undefined);
   const activeConversationId = session.activeConversationId;
   const activeConversation = session.activeConversation;
   const activeSummary = session.conversations.find(({ id }) => id === activeConversationId);
   const activityCount = Object.keys(session.activity?.tasks ?? {}).length;
   const isConnected = session.status === "connected";
-  const canSubmit =
-    isConnected && activeConversationId !== undefined && !submitting && draft.trim().length > 0;
-
-  const stopTyping = (): void => {
-    if (typingTimeoutRef.current !== undefined) clearTimeout(typingTimeoutRef.current);
-    typingTimeoutRef.current = undefined;
-    const conversationId = typingConversationRef.current;
-    typingConversationRef.current = undefined;
-    if (conversationId !== undefined) session.setTyping(conversationId, false);
-  };
-
-  const updateDraft = (content: string): void => {
-    setDraft(content);
-    if (!isConnected || activeConversationId === undefined || content.length === 0) {
-      stopTyping();
-      return;
-    }
-    if (typingConversationRef.current !== activeConversationId) {
-      stopTyping();
-      typingConversationRef.current = activeConversationId;
-      session.setTyping(activeConversationId, true);
-    }
-    if (typingTimeoutRef.current !== undefined) clearTimeout(typingTimeoutRef.current);
-    typingTimeoutRef.current = setTimeout(stopTyping, TYPING_IDLE_MS);
-  };
-
-  const stopAutoScroll = (): void => {
-    if (autoScrollFrameRef.current !== undefined) cancelAnimationFrame(autoScrollFrameRef.current);
-    autoScrollFrameRef.current = undefined;
-    autoScrollingRef.current = false;
-  };
-
-  const followLatest = (transcript: HTMLElement): void => {
-    const target = Math.max(0, transcript.scrollHeight - transcript.clientHeight);
-    if (Math.abs(target - transcript.scrollTop) <= 1) {
-      transcript.scrollTop = target;
-      stopAutoScroll();
-      return;
-    }
-    autoScrollStartRef.current = transcript.scrollTop;
-    autoScrollTargetRef.current = target;
-    autoScrollStartedAtRef.current = performance.now();
-    if (autoScrollFrameRef.current !== undefined) return;
-    autoScrollingRef.current = true;
-    const step = (time: number): void => {
-      const elapsed = time - autoScrollStartedAtRef.current;
-      const progress = Math.min(elapsed / 180, 1);
-      const eased = progress * progress * (3 - 2 * progress);
-      const start = autoScrollStartRef.current;
-      const target = autoScrollTargetRef.current;
-      transcript.scrollTop = start + (target - start) * eased;
-      if (progress >= 1 || Math.abs(target - transcript.scrollTop) <= 1) {
-        transcript.scrollTop = target;
-        autoScrollFrameRef.current = undefined;
-        autoScrollingRef.current = false;
-        return;
-      }
-      autoScrollFrameRef.current = requestAnimationFrame(step);
-    };
-    autoScrollFrameRef.current = requestAnimationFrame(step);
-  };
-
-  useEffect(() => () => stopTyping(), [activeConversationId, isConnected]);
-
-  useLayoutEffect(() => {
-    const transcript = transcriptRef.current;
-    if (transcript === null) return;
-
-    const conversationChanged = renderedConversationRef.current !== activeConversationId;
-    const previousHeight = transcriptHeightRef.current;
-    transcriptHeightRef.current = transcript.scrollHeight;
-    if (conversationChanged) {
-      renderedConversationRef.current = activeConversationId;
-      pinToLatestRef.current = true;
-      stopAutoScroll();
-      transcript.scrollTop = transcript.scrollHeight;
-      return;
-    }
-    if (!pinToLatestRef.current || transcript.scrollHeight === previousHeight) return;
-
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      stopAutoScroll();
-      transcript.scrollTop = transcript.scrollHeight;
-      return;
-    }
-
-    followLatest(transcript);
-  });
-
-  useEffect(() => () => stopAutoScroll(), []);
 
   const openLinkedConversation = useEffectEvent(() => {
     const conversationId = conversationIdFromLocation() ?? ROOT_CONVERSATION_ID;
@@ -183,42 +64,6 @@ export function ChatSession({ sessionId, username }: ChatSessionProps) {
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
-
-  const submit = async (event: SubmitEvent<HTMLFormElement>): Promise<void> => {
-    event.preventDefault();
-    const content = draft.trim();
-    if (content.length === 0 || activeConversationId === undefined || !isConnected || submitting) {
-      return;
-    }
-    stopTyping();
-    setSubmitting(true);
-    try {
-      const accepted = await session.submitPrompt(activeConversationId, content);
-      if (accepted) setDraft((current) => (current === draft ? "" : current));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const trackTranscriptPosition = (): void => {
-    const transcript = transcriptRef.current;
-    if (transcript === null || autoScrollingRef.current) return;
-    const distanceFromLatest =
-      transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight;
-    pinToLatestRef.current = distanceFromLatest <= 48;
-  };
-
-  const interruptAutoScroll = (): void => {
-    if (autoScrollingRef.current) stopAutoScroll();
-  };
-
-  const submitOnEnter = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (event.key !== "Enter" || event.shiftKey || event.altKey || event.nativeEvent.isComposing) {
-      return;
-    }
-    event.preventDefault();
-    event.currentTarget.form?.requestSubmit();
-  };
 
   const followConversationLink = (
     event: MouseEvent<HTMLAnchorElement>,
@@ -250,240 +95,159 @@ export function ChatSession({ sessionId, username }: ChatSessionProps) {
   };
 
   return (
-    <div className={`session-workspace${activityOpen ? " session-workspace--activity-open" : ""}`}>
-      <aside className="session-sidebar">
-        <header className="session-header">
-          <a className="product-link" href="/">
-            pi-durable-replay
-          </a>
-          <h1>Session</h1>
-          <p className="participant-name">
-            Joining as <strong>{username}</strong>
-          </p>
-          <p className="connection-status" role="status">
-            {statusLabel[session.status]}
-          </p>
-        </header>
-
-        {session.error === undefined ? null : (
-          <p className="session-error" role="alert">
-            {session.error}
-          </p>
-        )}
-
-        <nav className="conversation-navigation" aria-labelledby="conversations-heading">
-          <div className="conversation-navigation-header">
-            <h2 id="conversations-heading">Conversations</h2>
-            <button type="button" onClick={session.createConversation} disabled={!isConnected}>
-              New conversation
-            </button>
-          </div>
-          <div className="conversation-list" tabIndex={0}>
-            {session.conversations.length === 0 ? (
-              <p className="conversation-list-empty">No conversations yet.</p>
-            ) : (
-              <ul>
-                {session.conversations.map((conversation) => (
-                  <li key={conversation.id}>
-                    <a
-                      href={`?conversation=${conversation.id}`}
-                      aria-current={conversation.id === activeConversationId ? "page" : undefined}
-                      onClick={(event) => followConversationLink(event, conversation.id)}
-                    >
-                      {conversationLabel(conversation)}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </nav>
-
-        <ControlPanel
-          control={session.control}
-          usage={activeConversation?.usage}
-          activeConversationId={activeConversationId}
-          onSetBudgets={session.setBudgets}
-          onAbortConversation={session.abortConversation}
-          onAbortSession={session.abortSession}
-          onApproveUnsafe={session.approveUnsafe}
-          onInjectFault={session.injectFault}
-        />
-      </aside>
-
-      <main className="conversation-view">
-        <header className="conversation-header">
-          <div className="conversation-titlebar">
-            <h2 ref={conversationHeadingRef} id="transcript-heading" tabIndex={-1}>
-              {activeSummary === undefined ? "Conversation" : conversationLabel(activeSummary)}
-            </h2>
-            <button
-              ref={activityToggleRef}
-              className="activity-toggle"
-              type="button"
-              aria-controls="activity-panel"
-              aria-expanded={activityOpen}
-              onClick={toggleActivity}
-            >
-              Activity <span aria-hidden="true">{activityCount}</span>
-            </button>
-          </div>
-          {activeConversation === undefined ? null : (
-            <ConversationDetails conversation={activeConversation} />
-          )}
-        </header>
-
-        <section
-          ref={transcriptRef}
-          className="transcript"
-          aria-labelledby="transcript-heading"
-          role="log"
-          tabIndex={0}
-          onScroll={trackTranscriptPosition}
-          onWheel={interruptAutoScroll}
-          onTouchStart={interruptAutoScroll}
-          onPointerDown={interruptAutoScroll}
-        >
-          {activeConversation === undefined ? (
-            <p className="transcript-empty">Loading conversation…</p>
-          ) : activeConversation.entries.length === 0 && activeConversation.live === null ? (
-            <p className="transcript-empty">
-              Send a message to begin. You can fork the conversation from any user or assistant
-              message.
+    <AssistantRuntimeProvider runtime={runtime}>
+      <TypingPresence session={session} />
+      <div
+        className={`session-workspace${activityOpen ? " session-workspace--activity-open" : ""}`}
+      >
+        <aside className="session-sidebar">
+          <header className="session-header">
+            <a className="product-link" href="/">
+              pi-durable-replay
+            </a>
+            <h1>Session</h1>
+            <p className="participant-name">
+              Joining as <strong>{username}</strong>
             </p>
-          ) : (
-            <>
-              {activeConversation.earlier ? (
-                <button
-                  className="text-button transcript-load"
-                  type="button"
-                  onClick={() => session.loadEarlier(activeConversation.id)}
-                >
-                  Load earlier messages
-                </button>
-              ) : null}
-              <TranscriptList
-                entries={activeConversation.entries}
-                gaps={activeConversation.gaps}
-                tools={activeConversation.tools}
-                runActive={activeConversation.live !== null}
-                onReplay={(entryId) => session.replayFork(activeConversation.id, entryId)}
-                onFork={
-                  activeConversationId === undefined
-                    ? undefined
-                    : (entryId) => session.forkConversation(activeConversationId, entryId)
-                }
-                onFillGap={(gap) => session.fillGap(activeConversation.id, gap)}
-              />
-            </>
+            <p className="connection-status" role="status">
+              {statusLabel[session.status]}
+            </p>
+          </header>
+
+          {session.error === undefined ? null : (
+            <p className="session-error" role="alert">
+              {session.error}
+            </p>
           )}
 
-          {activeConversation?.live === null || activeConversation?.live === undefined ? null : (
-            <article
-              className="transcript-message transcript-message--assistant transcript-message--live"
-              aria-busy={activeConversation.live.active}
-            >
-              <header>
-                <div className="transcript-message-title">
-                  <strong>Assistant</strong>
-                </div>
-                <button
-                  className="text-button transcript-fork transcript-fork--placeholder"
-                  type="button"
-                  aria-hidden="true"
-                  tabIndex={-1}
-                  disabled
-                >
-                  Fork
-                </button>
-              </header>
-              {activeConversation.live.text.length === 0 ? (
-                <p className="responding">Responding…</p>
+          <nav className="conversation-navigation" aria-labelledby="conversations-heading">
+            <div className="conversation-navigation-header">
+              <h2 id="conversations-heading">Conversations</h2>
+              <button type="button" onClick={session.createConversation} disabled={!isConnected}>
+                New conversation
+              </button>
+            </div>
+            <div className="conversation-list" tabIndex={0}>
+              {session.conversations.length === 0 ? (
+                <p className="conversation-list-empty">No conversations yet.</p>
               ) : (
-                <MessageText text={activeConversation.live.text} />
+                <ul>
+                  {session.conversations.map((conversation) => (
+                    <li key={conversation.id}>
+                      <a
+                        href={`?conversation=${conversation.id}`}
+                        aria-current={conversation.id === activeConversationId ? "page" : undefined}
+                        onClick={(event) => followConversationLink(event, conversation.id)}
+                      >
+                        {conversationLabel(conversation)}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
               )}
-              {activeConversation.live.retry === undefined ? null : (
-                <p role="status">Retrying: {activeConversation.live.retry.error}</p>
-              )}
-            </article>
-          )}
+            </div>
+          </nav>
 
-          {activeConversation === undefined ||
-          activeConversation.compactions.length === 0 ? null : (
-            <p className="compaction-status" role="status">
-              {compactionStatusText(activeConversation.compactions)}
-            </p>
-          )}
-
-          {activeConversation?.failure === undefined ? null : (
-            <p className="transcript-error" role="alert">
-              {activeConversation.failure.kind} failed: {activeConversation.failure.message}
-            </p>
-          )}
-
-          {activeConversation === undefined || activeConversation.queued.length === 0 ? null : (
-            <ol className="transcript-list queued-inputs" aria-label="Queued messages">
-              {activeConversation.queued.map((input) => (
-                <li key={input.submissionId}>
-                  <article className="transcript-message transcript-message--user transcript-message--queued">
-                    <header>
-                      <div className="transcript-message-title">
-                        <strong>User</strong>
-                        <span>Queued</span>
-                      </div>
-                    </header>
-                    <MessageText text={input.text} />
-                  </article>
-                </li>
-              ))}
-            </ol>
-          )}
-        </section>
-
-        <form className="prompt-bar" onSubmit={submit}>
-          <label className="visually-hidden" htmlFor="prompt">
-            Message
-          </label>
-          <textarea
-            id="prompt"
-            name="prompt"
-            rows={3}
-            maxLength={MAX_PROMPT_CHARACTERS}
-            value={draft}
-            placeholder="Send a message… (Shift+Enter for a new line)"
-            onChange={(event) => updateDraft(event.currentTarget.value)}
-            onKeyDown={submitOnEnter}
-            aria-keyshortcuts="Enter"
-            disabled={!isConnected || activeConversationId === undefined}
+          <ControlPanel
+            control={session.control}
+            usage={activeConversation?.usage}
+            activeConversationId={activeConversationId}
+            onSetBudgets={session.setBudgets}
+            onAbortConversation={session.abortConversation}
+            onAbortSession={session.abortSession}
+            onApproveUnsafe={session.approveUnsafe}
+            onInjectFault={session.injectFault}
           />
-          <button type="submit" disabled={!canSubmit}>
-            {submitting ? "Sending…" : "Send"}
-          </button>
-          <p className="typing-indicator" aria-live="polite">
-            {typingLabel(activeConversation?.typing ?? [])}
-          </p>
-        </form>
-      </main>
+        </aside>
 
-      <ActivityPanel
-        graph={session.activity}
-        activeConversationId={activeConversationId}
-        onAbortTask={session.abortTask}
-        onClose={closeActivity}
-        closeButtonRef={activityCloseRef}
-        onOpenConversation={(conversationId) => {
-          if (conversationId !== session.activeConversationId) {
-            window.history.pushState(null, "", `?conversation=${conversationId}`);
-            session.openConversation(conversationId);
-          }
-          if (compactActivityLayout()) {
-            setActivityOpen(false);
-            requestAnimationFrame(() => conversationHeadingRef.current?.focus());
-          }
-        }}
-      />
-    </div>
+        <main className="conversation-view">
+          <header className="conversation-header">
+            <div className="conversation-titlebar">
+              <h2 ref={conversationHeadingRef} id="transcript-heading" tabIndex={-1}>
+                {activeSummary === undefined ? "Conversation" : conversationLabel(activeSummary)}
+              </h2>
+              <button
+                ref={activityToggleRef}
+                className="activity-toggle"
+                type="button"
+                aria-controls="activity-panel"
+                aria-expanded={activityOpen}
+                onClick={toggleActivity}
+              >
+                Activity <span aria-hidden="true">{activityCount}</span>
+              </button>
+            </div>
+            {activeConversation === undefined ? null : (
+              <ConversationDetails conversation={activeConversation} />
+            )}
+          </header>
+
+          <Thread
+            conversation={activeConversation}
+            onFork={(entryId) => {
+              if (activeConversationId !== undefined) {
+                session.forkConversation(activeConversationId, entryId);
+              }
+            }}
+            onReplay={(entryId) => {
+              if (activeConversationId !== undefined) {
+                session.replayFork(activeConversationId, entryId);
+              }
+            }}
+            onFillGap={(gap) => {
+              if (activeConversationId !== undefined) session.fillGap(activeConversationId, gap);
+            }}
+          />
+        </main>
+
+        <ActivityPanel
+          graph={session.activity}
+          activeConversationId={activeConversationId}
+          onAbortTask={session.abortTask}
+          onClose={closeActivity}
+          closeButtonRef={activityCloseRef}
+          onOpenConversation={(conversationId) => {
+            if (conversationId !== session.activeConversationId) {
+              window.history.pushState(null, "", `?conversation=${conversationId}`);
+              session.openConversation(conversationId);
+            }
+            if (compactActivityLayout()) {
+              setActivityOpen(false);
+              requestAnimationFrame(() => conversationHeadingRef.current?.focus());
+            }
+          }}
+        />
+      </div>
+    </AssistantRuntimeProvider>
   );
+}
+
+function TypingPresence({ session }: { readonly session: PiSession }) {
+  const text = useAuiState((s) => s.composer.text);
+  const conversationId = session.status === "connected" ? session.activeConversationId : undefined;
+  const typingRef = useRef<number | undefined>(undefined);
+  const { setTyping } = session;
+
+  useEffect(() => {
+    if (conversationId === undefined || text.length === 0) return;
+    typingRef.current = conversationId;
+    setTyping(conversationId, true);
+    const idle = setTimeout(() => {
+      typingRef.current = undefined;
+      setTyping(conversationId, false);
+    }, TYPING_IDLE_MS);
+    return () => clearTimeout(idle);
+  }, [conversationId, text, setTyping]);
+
+  useEffect(() => {
+    if (text.length > 0 && typingRef.current === conversationId) return;
+    const typing = typingRef.current;
+    if (typing === undefined) return;
+    typingRef.current = undefined;
+    setTyping(typing, false);
+  }, [conversationId, text, setTyping]);
+
+  return null;
 }
 
 function ConversationDetails({ conversation }: { readonly conversation: ConversationSnapshot }) {
@@ -549,9 +313,3 @@ const costFormatter = new Intl.NumberFormat(undefined, {
 });
 
 const formatCost = (cost: number): string => costFormatter.format(cost);
-
-function compactionStatusText(compactions: ConversationSnapshot["compactions"]): string {
-  return compactions.some(({ blocking }) => blocking)
-    ? "Compacting context before responding…"
-    : "Compacting context in the background…";
-}

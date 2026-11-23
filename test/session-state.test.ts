@@ -79,8 +79,15 @@ describe("session state", () => {
     let view = frame.view;
     let state = show(initialSessionState, view, client);
     expect(state.snapshots[1]).toMatchObject({
-      entries: [{ role: "user", text: "Hello" }],
-      live: { active: true, text: "Hel" },
+      isRunning: true,
+      messages: [
+        { role: "user", content: [{ type: "text", text: "Hello" }] },
+        {
+          role: "assistant",
+          status: { type: "running" },
+          content: [{ type: "text", text: "Hel" }],
+        },
+      ],
       agent: { thinkingLevel: "off", tools: [] },
       usage: { models: {}, tools: {} },
     });
@@ -93,7 +100,7 @@ describe("session state", () => {
     };
 
     apply([["a", ["docs", "pi.live", "generation", "message", "content", 0, "text"], "lo"]]);
-    expect(state.snapshots[1]?.live).toEqual({ active: true, text: "Hello" });
+    expect(state.snapshots[1]?.messages.at(-1)?.content).toEqual([{ type: "text", text: "Hello" }]);
 
     apply([
       [
@@ -107,12 +114,17 @@ describe("session state", () => {
       ["d", ["docs", "pi.live", "run"]],
     ]);
     expect(state.snapshots[1]).toMatchObject({
-      entries: [
-        { role: "user", text: "Hello" },
-        { role: "assistant", text: "Hello" },
+      isRunning: false,
+      messages: [
+        { role: "user", content: [{ type: "text", text: "Hello" }] },
+        {
+          role: "assistant",
+          status: { type: "complete" },
+          content: [{ type: "text", text: "Hello" }],
+        },
       ],
-      live: null,
     });
+    expect(state.snapshots[1]?.messages).toHaveLength(2);
   });
 
   it("rejects malformed view operations", () => {
@@ -159,95 +171,11 @@ describe("session state", () => {
       ]),
     );
     // The view keeps the history; head markers sit where they were written.
-    expect(state.snapshots[1]?.entries).toEqual([
-      expect.objectContaining({ role: "user", text: "Before the summary" }),
-      expect.objectContaining({
-        role: "compaction",
-        text: "User asked about weather.",
-        canFork: false,
-      }),
-      expect.objectContaining({ role: "reset", text: "Context reset", canFork: false }),
-      expect.objectContaining({
-        role: "reset",
-        text: "Continue from the handoff.",
-        canFork: false,
-      }),
-    ]);
-  });
-
-  it("omits the rendered diagnostics block from tool result text", () => {
-    const diagnostics = [{ severity: "warn", code: "truncated", message: "Output truncated" }];
-    const state = show(
-      initialSessionState,
-      viewOf([
-        {
-          id: 4,
-          conversationId: 1,
-          kind: "pi.tool-result",
-          model: [
-            {
-              role: "toolResult",
-              toolCallId: "call-1",
-              toolName: "get_weather",
-              content: [
-                { type: "text", text: "Sunny" },
-                { type: "text", text: "<harness>\n[warn] Output truncated\n</harness>" },
-              ],
-              details: { source: "cache" },
-              isError: false,
-              timestamp: 1,
-            },
-          ],
-          data: { diagnostics },
-        },
-      ]),
-    );
-    expect(state.snapshots[1]?.entries).toEqual([
-      expect.objectContaining({
-        role: "tool",
-        text: "Sunny",
-        diagnostics,
-        toolResult: {
-          callId: "call-1",
-          name: "get_weather",
-          isError: false,
-          details: { source: "cache" },
-        },
-      }),
-    ]);
-  });
-
-  it("keeps assistant tool calls structured instead of repeating them as transcript text", () => {
-    const state = show(
-      initialSessionState,
-      viewOf([
-        {
-          id: 3,
-          conversationId: 1,
-          kind: "pi.assistant",
-          model: [
-            {
-              ...assistant("I will check."),
-              content: [
-                { type: "text", text: "I will check." },
-                {
-                  type: "toolCall",
-                  id: "call-1",
-                  name: "get_weather",
-                  arguments: { location: "Vienna" },
-                },
-              ],
-            },
-          ],
-        },
-      ]),
-    );
-    expect(state.snapshots[1]?.entries).toEqual([
-      expect.objectContaining({
-        role: "assistant",
-        text: "I will check.",
-        toolCalls: [{ callId: "call-1", name: "get_weather", args: { location: "Vienna" } }],
-      }),
+    expect(state.snapshots[1]?.messages.map(({ content }) => content[0])).toEqual([
+      { type: "text", text: "Before the summary" },
+      { type: "data-pi-context", data: { kind: "compaction", text: "User asked about weather." } },
+      { type: "data-pi-context", data: { kind: "reset", text: "Context reset" } },
+      { type: "data-pi-context", data: { kind: "reset", text: "Continue from the handoff." } },
     ]);
   });
 
@@ -284,15 +212,25 @@ describe("session state", () => {
       }),
     );
     expect(state.snapshots[1]).toMatchObject({
-      live: { active: true, text: "" },
-      tools: [
+      isRunning: true,
+      runTaskId: 5,
+      messages: [
         {
-          callId: "call-1",
-          name: "search",
-          status: "running",
-          output: "searching",
-          details: { matches: 2 },
-          diagnostics: [{ severity: "info", message: "Using cached index" }],
+          id: "tool:call-1",
+          status: { type: "running" },
+          content: [
+            {
+              type: "tool-call",
+              toolCallId: "call-1",
+              toolName: "search",
+              result: "searching",
+              isPreliminary: true,
+              artifact: {
+                details: { matches: 2 },
+                diagnostics: [{ severity: "info", message: "Using cached index" }],
+              },
+            },
+          ],
         },
       ],
       compactions: [{ taskId: 9, reason: "threshold", blocking: true }],
@@ -315,11 +253,16 @@ describe("session state", () => {
         },
       }),
     );
-    expect(state.snapshots[1]?.failure).toEqual({
-      taskId: 9,
-      kind: "Run",
-      message: "The model request failed: 401 Unauthorized",
-    });
+    expect(state.snapshots[1]?.messages).toMatchObject([
+      {
+        id: "failure:9",
+        status: {
+          type: "incomplete",
+          reason: "error",
+          error: "The model request failed: 401 Unauthorized",
+        },
+      },
+    ]);
 
     state = show(
       state,
@@ -329,14 +272,15 @@ describe("session state", () => {
         },
       }),
     );
-    expect(state.snapshots[1]?.failure).toEqual({
-      taskId: 10,
-      kind: "Compaction",
-      message: "summary failed",
-    });
+    expect(state.snapshots[1]?.messages).toMatchObject([
+      {
+        id: "failure:10",
+        status: { type: "incomplete", reason: "error", error: "Compaction failed: summary failed" },
+      },
+    ]);
 
     state = show(state, viewOf([], { "pi.live": { run: { taskId: 11, inputs: [12], turns: 0 } } }));
-    expect(state.snapshots[1]?.failure).toBeUndefined();
+    expect(state.snapshots[1]?.messages).toEqual([]);
   });
 
   it("lists queued inputs from the inbox document, without passive writes", () => {
@@ -360,21 +304,6 @@ describe("session state", () => {
       { submissionId: 5, mode: "followUp", text: "Next question" },
       { submissionId: 6, mode: "steer", text: "Faster\n[Image]" },
     ]);
-  });
-
-  it("offers earlier entries and missing ranges the client has not loaded", () => {
-    const client = transcript();
-    let state = show(
-      initialSessionState,
-      viewOf([user(11, "Eleven"), user(12, "Twelve")], {}, 10),
-      client,
-    );
-    expect(state.snapshots[1]).toMatchObject({ earlier: true, gaps: [] });
-
-    // A reconnect whose window starts past what the client holds leaves a gap between them.
-    state = show(state, viewOf([user(20, "Twenty")], {}, 15), client);
-    expect(state.snapshots[1]?.entries.map(({ id }) => id)).toEqual([11, 12, 20]);
-    expect(state.snapshots[1]?.gaps).toEqual([{ kind: "gap", after: 12, upTo: 20 }]);
   });
 
   it("keeps typing presence when the view changes", () => {

@@ -91,7 +91,7 @@ body:has(.session-workspace) {
 
 .conversation-view {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
   min-inline-size: 0;
   min-block-size: 0;
   overflow: hidden;
@@ -280,6 +280,12 @@ body:has(.session-workspace) {
   overflow-wrap: anywhere;
 }
 
+.thread {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-block-size: 0;
+}
+
 .transcript {
   --transcript-entry-gap: 0.875rem;
 
@@ -433,8 +439,12 @@ body:has(.session-workspace) {
 
 .prompt-bar textarea {
   inline-size: 100%;
-  block-size: 4.5rem;
   resize: none;
+}
+
+.message-actions {
+  display: flex;
+  gap: 0.5rem;
 }
 
 .prompt-bar button {
