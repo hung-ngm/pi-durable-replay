@@ -58,6 +58,12 @@ export type SessionAction =
   | { readonly type: "error"; readonly message: string }
   | { readonly type: "clear-error" };
 
+export const OPENS_RESULT_CONVERSATION: ReadonlySet<string> = new Set([
+  "conversation.create",
+  "conversation.fork",
+  "run.replayFork",
+]);
+
 export const initialSessionState: SessionState = {
   status: "connecting",
   conversations: [],
@@ -135,8 +141,7 @@ function reduceServerEvent(state: SessionState, event: ServerEvent): SessionStat
     }
     case "command.result":
       if (!event.ok) return { ...state, error: event.error.message };
-      return event.conversationId === undefined ||
-        (event.command !== "conversation.create" && event.command !== "conversation.fork")
+      return event.conversationId === undefined || !OPENS_RESULT_CONVERSATION.has(event.command)
         ? state
         : { ...state, activeConversationId: event.conversationId, error: undefined };
     case "error":

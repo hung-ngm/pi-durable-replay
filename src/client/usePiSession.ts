@@ -23,6 +23,7 @@ import {
 import { CommandOutbox, type RetriableCommand } from "./command-outbox.ts";
 import {
   initialSessionState,
+  OPENS_RESULT_CONVERSATION,
   sessionReducer,
   type ConversationSnapshot,
   type TranscriptGap,
@@ -233,7 +234,7 @@ export function usePiSession(
           acknowledged !== undefined &&
           parsed.ok &&
           parsed.conversationId !== undefined &&
-          (acknowledged.type === "conversation.create" || acknowledged.type === "conversation.fork")
+          OPENS_RESULT_CONVERSATION.has(acknowledged.type)
         ) {
           selectedConversationRef.current = parsed.conversationId;
         }

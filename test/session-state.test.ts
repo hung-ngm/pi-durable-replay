@@ -341,6 +341,18 @@ describe("session state", () => {
       }),
     });
     expect(state.activeConversationId).toBe(4);
+
+    state = sessionReducer(state, {
+      type: "event",
+      event: event({
+        type: "command.result",
+        command: "run.replayFork",
+        requestId: "replay-1",
+        ok: true,
+        conversationId: 5,
+      }),
+    });
+    expect(state.activeConversationId).toBe(5);
   });
 
   it("tracks the session activity graph from snapshots and updates", () => {
