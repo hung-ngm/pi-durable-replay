@@ -25,15 +25,15 @@ This is a single-user tool, not a production service.
 The Worker checks the token and forwards each session to its own Durable Object. That object holds every conversation, task, and document of the session in its SQLite store, so a crash or an eviction loses nothing that was committed.
 
 ```mermaid
-flowchart LR
-	Browser["Browser UI<br/>src/client"] -- "cookie or Bearer token" --> Worker["Worker<br/>src/index.ts"]
-	Worker -- "SESSIONS.getByName(id)" --> Session
+flowchart TB
+	Browser["Browser UI<br/>src/client"] <-- "WebSocket, cookie or Bearer token" --> Worker["Worker<br/>src/index.ts"]
+	Worker -- "SESSIONS.getByName(id)" --> Harness
 
 	subgraph Session["Session Durable Object, one per session"]
 		Harness["Pi Durable Harness"]
 		Agent["research agent and tools<br/>src/agent.ts, src/tools.ts"]
-		Control["budget guard<br/>src/control.ts"]
 		Replay["Fork Replay and approval gate<br/>src/replay.ts"]
+		Control["budget guard<br/>src/control.ts"]
 		Store[("SQLite: conversations, task graph,<br/>Control, Ledger, and Replay documents")]
 		Harness --> Agent
 		Agent --> Replay
@@ -42,10 +42,9 @@ flowchart LR
 		Harness <--> Store
 	end
 
+	Alarm(("Durable Object alarm")) -- "resume()" --> Harness
 	Agent -- "model calls" --> OpenAI[("OpenAI")]
 	Agent -- "search" --> Exa[("Exa")]
-	Alarm(("Durable Object alarm")) -- "resume()" --> Harness
-	Session -- "WebSocket view updates" --> Browser
 ```
 
 1. The browser opens a WebSocket to `/api/sessions/:id`, and the Worker forwards it to the session's Durable Object.
