@@ -113,7 +113,7 @@ export function ControlPanel({
           </p>
           {replay.pendingUnsafeApproval ? (
             <p className="text-muted-foreground text-xs" role="status">
-              The source conversation ran an unsafe tool. Running it here waits for your approval on
+              The source conversation ran loop_forever. Running it here waits for your approval on
               the blocked call.
             </p>
           ) : replay.approvedAt === undefined ? null : (
