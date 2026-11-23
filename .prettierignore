@@ -1,0 +1,3 @@
+# Installed coding-agent skills are vendored content, not project source.
+.agents/
+.claude/
