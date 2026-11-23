@@ -291,7 +291,13 @@ export async function checkBudgets(
         await kill(
           harness,
           graph,
-          { scope: "conversation", conversationId: id, reason: "budget", budget: fired },
+          {
+            scope: "run",
+            conversationId: id,
+            taskId: liveRuns.get(conversationId) as TaskId,
+            reason: "budget",
+            budget: fired,
+          },
           context,
         ),
       );

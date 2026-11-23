@@ -112,7 +112,7 @@ describe("control: kills and budgets (SPEC tests 1, 2, 8)", () => {
       expect(budgetKill).toMatchObject({
         reason: "budget",
         budget: "turns",
-        scope: "conversation",
+        scope: "run",
       });
 
       await poll(() => (liveNodes(graph()).length === 0 ? true : undefined), 30_000);

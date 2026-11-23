@@ -304,7 +304,7 @@ export function createTools(config: ToolConfig): AgentTools {
       // again, so the tree grows until something aborts it. The round cap only exists
       // so a forgotten loop in a test cannot recruit literally forever.
       for (let round = 0; round < 100_000; round++) {
-        await api.commit(async (tx) => {
+        const childId = await api.commit(async (tx) => {
           const child = await tx.createConversation({
             ownership: { kind: "task", taskId: api.taskId },
           });
@@ -314,11 +314,6 @@ export function createTools(config: ToolConfig): AgentTools {
           });
           return child.id;
         }, context);
-        const children = await api.commit(
-          (tx) => tx.scanConversations({ ownerTaskId: api.taskId }, 100_000),
-          context,
-        );
-        const childId = children.items[children.items.length - 1]!.id;
         const child = await api.conversation(childId, context);
         if (child !== undefined) {
           await child.submit(
