@@ -18,36 +18,6 @@ export const MAX_ENTRY_PAGE = 100;
 // JSON may escape each prompt code unit as six characters.
 export const MAX_CLIENT_FRAME_CHARACTERS =
   MAX_PROMPT_CHARACTERS * 6 + MAX_REQUEST_ID_CHARACTERS + 1024;
-const SCHEDULED_INSTRUCTION_PREFIX = "Scheduled instruction due now: ";
-const RECURRENCE_NOTE_PREFIX = "\n\nThis instruction recurs.";
-
-/** Input submitted when a scheduled instruction is due. Self-contained; no system-prompt support needed. */
-export function formatScheduledInstruction(scheduled: {
-  readonly id: string;
-  readonly instruction: string;
-  readonly recurrence?: {
-    readonly cadence: {
-      readonly unit: "minute" | "hour" | "day" | "week" | "month";
-      readonly interval: number;
-    };
-    readonly timezone: string;
-  };
-}): string {
-  const text = `${SCHEDULED_INSTRUCTION_PREFIX}${scheduled.instruction}`;
-  if (scheduled.recurrence === undefined) return text;
-  const { interval, unit } = scheduled.recurrence.cadence;
-  const cadence = `${interval} ${unit}${interval === 1 ? "" : "s"}`;
-  return `${text}${RECURRENCE_NOTE_PREFIX} It repeats every ${cadence} in ${scheduled.recurrence.timezone}. After carrying it out, call schedule with this instruction and sourceScheduleId ${JSON.stringify(scheduled.id)}. Omit delaySeconds, at, and recurrence because the next UTC deadline and recurrence policy are derived from the source.`;
-}
-
-/** The instruction text of a scheduled delivery input, or `undefined` for ordinary input. */
-export function parseScheduledInstruction(content: string): string | undefined {
-  if (!content.startsWith(SCHEDULED_INSTRUCTION_PREFIX)) return undefined;
-  const text = content.slice(SCHEDULED_INSTRUCTION_PREFIX.length);
-  const note = text.lastIndexOf(RECURRENCE_NOTE_PREFIX);
-  return note === -1 ? text : text.slice(0, note);
-}
-
 /** Display text of queued user input content: a string or text/image parts. */
 function userInputText(content: unknown): string {
   if (typeof content === "string") return content;

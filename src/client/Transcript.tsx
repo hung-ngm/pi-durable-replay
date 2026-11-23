@@ -226,7 +226,6 @@ const roleLabel: Record<TranscriptEntry["role"], string> = {
   assistant: "Assistant",
   system: "System",
   tool: "Tool",
-  scheduled: "Scheduled",
   compaction: "Context summary",
   reset: "Context reset",
   event: "Event",

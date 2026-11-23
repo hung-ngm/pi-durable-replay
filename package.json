@@ -1,5 +1,5 @@
 {
-  "name": "pi-durable-cloudflare",
+  "name": "pi-durable-replay",
   "version": "0.87.1",
   "private": true,
   "type": "module",

@@ -16,7 +16,6 @@ import type {
 import { CompactionEntry, ResetEntry, ToolResultEntry } from "@earendil-works/pi-durable";
 import {
   ROOT_CONVERSATION_ID,
-  parseScheduledInstruction,
   queuedInputs,
   type ConnectionStatus,
   type ConversationSummary,
@@ -42,15 +41,7 @@ export interface TranscriptEntry {
   readonly id: number;
   readonly conversationId: number;
   readonly kind: string;
-  readonly role:
-    | "user"
-    | "assistant"
-    | "system"
-    | "tool"
-    | "scheduled"
-    | "compaction"
-    | "reset"
-    | "event";
+  readonly role: "user" | "assistant" | "system" | "tool" | "compaction" | "reset" | "event";
   readonly text: string;
   readonly timestamp?: number;
   readonly canFork: boolean;
@@ -348,9 +339,8 @@ function transcriptEntry(entry: EntryRecord): TranscriptEntry {
       : entry.data === undefined
         ? entry.kind
         : JSON.stringify(entry.data));
-  const scheduled = first?.role === "user" ? parseScheduledInstruction(rawText) : undefined;
-  const role = scheduled === undefined ? messageRole(first) : "scheduled";
-  const text = scheduled ?? rawText;
+  const role = messageRole(first);
+  const text = rawText;
   const toolCalls =
     first?.role === "assistant"
       ? first.content.flatMap((part) =>

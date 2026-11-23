@@ -13,7 +13,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { openDurableObjectSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/cloudflare";
 import { describe, expect, it } from "vitest";
-import { DeliverScheduledInstruction } from "../src/schedule.ts";
+import { SleepingTask } from "./sleeping-task.ts";
 import { expectAlarm } from "./alarm.ts";
 
 const context = BACKGROUND_CONTEXT;
@@ -29,7 +29,7 @@ async function seed<T>(
     // Let the Session finish opening its harness before writing beside it.
     await state.blockConcurrencyWhile(async () => {});
     const registry = createRegistry();
-    registry.install(defineExtension({ name: "schedule", tasks: [DeliverScheduledInstruction] }));
+    registry.install(defineExtension({ name: "test", tasks: [SleepingTask] }));
     const harness = await Harness.open(
       await openStorage(state),
       { models: createModels(), registry },
@@ -119,54 +119,6 @@ describe("session recovery", () => {
     }
 
     expect(status).toBe("unanswered");
-  });
-
-  it("re-arms a persisted scheduled instruction after eviction and submits it from the alarm", async () => {
-    const stub = env.SESSIONS.getByName("scheduled-instruction-recovery");
-    const runAt = Date.now() + 1_500;
-    await seed(stub, (harness) =>
-      harness.commit(
-        (tx) =>
-          tx.createTask(
-            DeliverScheduledInstruction,
-            {
-              id: "schedule:integration",
-              conversationId: ROOT_CONVERSATION_ID,
-              instruction: "Check the oven",
-              runAt,
-            },
-            {
-              ownership: { kind: "conversation" },
-              conversationId: ROOT_CONVERSATION_ID,
-              background: true,
-            },
-          ),
-        context,
-      ),
-    );
-
-    // The reopened Session resumes the delivery, which sleeps; `onWake` moves the alarm to its deadline.
-    await expectAlarm(stub, runAt);
-    // The live instance keeps no timer for the sleep: only its alarm handler can make the delivery runnable.
-    await new Promise((resolve) => setTimeout(resolve, Math.max(0, runAt - Date.now()) + 20));
-    // The alarm may already have fired by itself; running it again is harmless (alarms are at-least-once).
-    await runDurableObjectAlarm(stub);
-
-    let submission: SubmissionRecord | undefined;
-    for (let attempt = 0; attempt < 100 && submission === undefined; attempt++) {
-      submission = await runInDurableObject(stub, async (_instance, state) =>
-        (await openStorage(state)).submissionByRequest(
-          ROOT_CONVERSATION_ID,
-          "schedule:integration",
-          context,
-        ),
-      );
-    }
-    expect(submission).toMatchObject({
-      conversationId: ROOT_CONVERSATION_ID,
-      requestId: "schedule:integration",
-      type: "input",
-    });
   });
 
   it("clears an early alarm that finds an idle Session", async () => {

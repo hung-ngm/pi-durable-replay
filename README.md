@@ -1,21 +1,18 @@
-# pi-durable on Cloudflare
+# pi-durable-replay
 
-A working example of [`@earendil-works/pi-durable`](https://www.npmjs.com/package/@earendil-works/pi-durable) running in a Cloudflare Durable Object.
+A control plane for durable agent runs, built on [`@earendil-works/pi-durable`](https://www.npmjs.com/package/@earendil-works/pi-durable) running in a Cloudflare Durable Object: replay failed runs without re-firing their tools, and kill runaway loops before they spend. Forked from [`earendil-works/pi-durable-cloudflare`](https://github.com/earendil-works/pi-durable-cloudflare); see [SPEC.md](SPEC.md) for the product definition and [docs/adr](docs/adr) for the decisions.
 
-Start with the [Pi Durable announcement](https://earendil.com/posts/pi-durable/) for the ideas behind the harness. This repository shows one way to put those ideas into a small, usable web application.
+Start with the [Pi Durable announcement](https://earendil.com/posts/pi-durable/) for the ideas behind the harness.
 
 Pi Durable is experimental, so its APIs may still change.
 
 ## What you can try
 
-- Create a shared chat session and open it in multiple browsers.
-- Run several conversations at once and fork a conversation from an earlier message.
+- Create a session and run several conversations at once; fork a conversation from an earlier message.
 - Reconnect without losing committed transcripts or queued prompts.
-- Schedule one-time or recurring follow-ups.
-- Ask a search subagent about earlier conversations.
 - Open Activity to inspect live task ownership, waits, sleeps, tool calls, and background work while conversations run.
 
-This is a sample, not a production service. It intentionally has no authentication or rate limiting.
+This is a single-user tool, not a production service.
 
 ## Run it locally
 

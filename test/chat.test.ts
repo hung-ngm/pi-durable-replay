@@ -7,6 +7,7 @@ import {
   type ConversationId,
   type ConversationView,
   createRegistry,
+  defineExtension,
   type EntryRecord,
   Harness,
   type HarnessOptions,
@@ -18,7 +19,7 @@ import { createChatHarnessOptions } from "../src/chat.ts";
 import { expectAlarm } from "./alarm.ts";
 import worker from "../src/index.ts";
 import { MAX_CLIENT_FRAME_CHARACTERS, queuedInputs } from "../src/protocol.ts";
-import { DeliverScheduledInstruction } from "../src/schedule.ts";
+import { SleepingTask } from "./sleeping-task.ts";
 
 type ProtocolMessage = {
   readonly type?: string;
@@ -448,7 +449,7 @@ describe("chat application", () => {
           "pi.agent": {
             model: { provider: "openai", modelId: "gpt-6-luna" },
             thinkingLevel: "off",
-            tools: ["get_weather", "schedule", "search_history"],
+            tools: [],
           },
         },
       },
@@ -774,26 +775,28 @@ describe("chat application", () => {
 
   it("lists subagent conversations with their owner", async () => {
     const sessionId = "owned-conversations-listed";
-    // A task-owned conversation, as history search creates for its subagent.
-    const childId = await seedSession(sessionId, createChatHarnessOptions(), async (harness) => {
-      const root = await harness.root(BACKGROUND_CONTEXT);
-      return root.commit(async (tx) => {
-        const task = await tx.createTask(
-          DeliverScheduledInstruction,
-          {
-            id: "schedule:owner",
-            conversationId: root.id,
-            instruction: "Owner only",
-            runAt: Date.now() + 3_600_000,
-          },
-          { ownership: { kind: "conversation" }, background: true },
-        );
-        const child = await tx.createConversation({
-          ownership: { kind: "task", taskId: task },
-        });
-        return child.id;
-      }, BACKGROUND_CONTEXT);
-    });
+    // A task-owned conversation, as a tool task creates for its subagent.
+    const chatOptions = createChatHarnessOptions();
+    const fixtureRegistry = createRegistry();
+    fixtureRegistry.install(defineExtension({ name: "test", tasks: [SleepingTask] }));
+    const childId = await seedSession(
+      sessionId,
+      { ...chatOptions, registry: fixtureRegistry },
+      async (harness) => {
+        const root = await harness.root(BACKGROUND_CONTEXT);
+        return root.commit(async (tx) => {
+          const task = await tx.createTask(
+            SleepingTask,
+            { runAt: Date.now() + 3_600_000 },
+            { ownership: { kind: "conversation" }, background: true },
+          );
+          const child = await tx.createConversation({
+            ownership: { kind: "task", taskId: task },
+          });
+          return child.id;
+        }, BACKGROUND_CONTEXT);
+      },
+    );
 
     const response = await exports.default.fetch(`https://example.com/api/sessions/${sessionId}`, {
       headers: { Upgrade: "websocket" },
@@ -801,7 +804,7 @@ describe("chat application", () => {
     const socket = response.webSocket!;
     const messages = jsonMessages(socket);
     socket.accept();
-    // The reopened Session resumes the delivery, which goes to sleep: its activity update may precede the snapshot.
+    // The reopened Session sees the task (blocked: the app registry has no test fixture): its activity update may precede the snapshot.
     const snapshot = await messages.nextMatching<{
       type: string;
       session: {
@@ -817,7 +820,7 @@ describe("chat application", () => {
     });
     expect(Object.values(snapshot.session.activity.tasks)).toEqual([
       expect.objectContaining({
-        kind: "app.deliver-scheduled-instruction",
+        kind: "test.sleeping-task",
         conversationId: 1,
         background: true,
         conversations: [childId],

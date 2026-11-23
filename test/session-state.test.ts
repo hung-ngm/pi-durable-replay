@@ -6,7 +6,7 @@ import {
   sessionReducer,
   type SessionState,
 } from "../src/client/session-state.ts";
-import { parseServerEventEnvelope, formatScheduledInstruction } from "../src/protocol.ts";
+import { parseServerEventEnvelope } from "../src/protocol.ts";
 
 const usage = {
   input: 0,
@@ -122,34 +122,6 @@ describe("session state", () => {
     expect(() => event({ type: "conversation.view", conversationId: 1, view: {} })).toThrow(
       "Conversation view payload is invalid",
     );
-  });
-
-  it("labels scheduled deliveries rather than user messages", () => {
-    const state = show(
-      initialSessionState,
-      viewOf([
-        user(
-          2,
-          formatScheduledInstruction({ id: "schedule:2", instruction: "Look outside the window" }),
-        ),
-        user(
-          3,
-          formatScheduledInstruction({
-            id: "schedule:3",
-            instruction: "Check again tomorrow",
-            recurrence: { cadence: { unit: "day", interval: 1 }, timezone: "Europe/Vienna" },
-          }),
-        ),
-      ]),
-    );
-    expect(state.snapshots[1]?.entries).toEqual([
-      expect.objectContaining({
-        role: "scheduled",
-        text: "Look outside the window",
-        canFork: false,
-      }),
-      expect.objectContaining({ role: "scheduled", text: "Check again tomorrow", canFork: false }),
-    ]);
   });
 
   it("labels compaction and reset entries in place and strips the summary wrapper", () => {
