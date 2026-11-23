@@ -1,7 +1,6 @@
 import { assertValidOp, type Op } from "@earendil-works/chord/delta";
 import type { KillRecord } from "./control.ts";
 import type { ReplayState } from "./replay.ts";
-import type { LedgerEntry } from "./tools.ts";
 
 import type {
   BlockedReason,
@@ -14,7 +13,7 @@ import type {
   TaskGraphState,
 } from "@earendil-works/pi-durable";
 
-/** Marks the tool result of a charge that the Fork Replay gate blocked. */
+/** Marks the tool result of a call that the Fork Replay gate blocked. */
 export const REPLAY_BLOCK_MARKER = "is blocked in this replay";
 
 export const ROOT_CONVERSATION_ID = 1;
@@ -138,11 +137,11 @@ export type ClientCommand =
       readonly conversationId: number;
     }
   | {
-      /** Inject a demo fault: interrupt the live unsafe tool, arm the crash loop, or evict the object. */
+      /** Inject a demo fault: arm the crash loop, or evict the object. */
       readonly type: "fault.inject";
       readonly requestId: string;
       readonly conversationId: number;
-      readonly kind: "interrupt-unsafe" | "crash-loop" | "evict";
+      readonly kind: "crash-loop" | "evict";
     }
   | {
       readonly type: "control.setBudgets";
@@ -152,12 +151,11 @@ export type ClientCommand =
     };
 export type ClientCommandType = Exclude<ClientCommand["type"], "presence.typing">;
 
-/** Control state as the client sees it: budgets, the kill log, and the ledger. */
+/** Control state as the client sees it: budgets, the kill log, and replay provenance. */
 export interface ControlView {
   readonly tokenBudget: number;
   readonly turnBudget: number;
   readonly kills: readonly KillRecord[];
-  readonly ledger: readonly LedgerEntry[];
   /** Fork Replay provenance by conversation ID, for conversations that are replays. */
   readonly replays: Readonly<Record<string, ReplayState>>;
   /** crash_loop fault-tool executions so far (fault evidence for the panel). */
@@ -468,8 +466,8 @@ export function parseClientCommand(message: string): ClientCommand {
       };
     case "fault.inject": {
       const kind = value.kind;
-      if (kind !== "interrupt-unsafe" && kind !== "crash-loop" && kind !== "evict") {
-        throw new InvalidClientCommand("kind must be interrupt-unsafe, crash-loop, or evict");
+      if (kind !== "crash-loop" && kind !== "evict") {
+        throw new InvalidClientCommand("kind must be crash-loop or evict");
       }
       return {
         type: value.type,
@@ -553,8 +551,7 @@ function parseControlView(value: unknown): ControlView {
     !isRecord(value) ||
     typeof value.tokenBudget !== "number" ||
     typeof value.turnBudget !== "number" ||
-    !Array.isArray(value.kills) ||
-    !Array.isArray(value.ledger)
+    !Array.isArray(value.kills)
   ) {
     throw new Error("Session control payload is invalid");
   }
@@ -562,7 +559,6 @@ function parseControlView(value: unknown): ControlView {
     tokenBudget: value.tokenBudget,
     turnBudget: value.turnBudget,
     kills: value.kills as KillRecord[],
-    ledger: value.ledger as LedgerEntry[],
     replays: (isRecord(value.replays) ? value.replays : {}) as Record<string, ReplayState>,
     crashAttempts:
       typeof value.crashAttempts === "number" && Number.isSafeInteger(value.crashAttempts)

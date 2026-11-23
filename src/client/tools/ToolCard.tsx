@@ -39,18 +39,10 @@ interface ResearchDetails {
   readonly answers?: readonly { readonly angle: string; readonly conversationId: number }[];
 }
 
-interface ChargeDetails {
-  readonly credits: number;
-  readonly memo: string;
-  readonly taskId: string;
-  readonly at: number;
-}
-
 const toolBodies: Record<string, Body> = {
   search: SearchBody,
   slow_search: SlowSearchBody,
   research: ResearchBody,
-  charge_credits: ChargeBody,
 };
 
 const faultTools = new Set(["loop_forever", "crash_loop"]);
@@ -85,6 +77,7 @@ export function ToolCard({ part }: { readonly part: ToolCallPart }) {
       status={toolRowStatus(part)}
     >
       <Body part={part} />
+      {part.approval === undefined ? null : <Approve part={part} />}
       {diagnostics === undefined || diagnostics.length === 0 ? null : (
         <Diagnostics diagnostics={diagnostics} />
       )}
@@ -200,30 +193,12 @@ function ResearchBody({ part }: { readonly part: ToolCallPart }) {
   );
 }
 
-function ChargeBody({ part }: { readonly part: ToolCallPart }) {
-  const { credits, memo } = part.args as { readonly credits?: number; readonly memo?: string };
-  const entry = detailsOf<ChargeDetails>(part);
-  return (
-    <div className="flex flex-col gap-2">
-      <p>
-        {credits ?? "?"} credits for <span className="font-medium">{memo ?? "no memo"}</span>
-      </p>
-      {entry === undefined ? null : (
-        <p className="text-muted-foreground text-xs">
-          Ledger entry from tool task #{entry.taskId} at {new Date(entry.at).toLocaleTimeString()}
-        </p>
-      )}
-      {part.approval === undefined ? null : <ApproveCharge part={part} />}
-    </div>
-  );
-}
-
-function ApproveCharge({ part }: { readonly part: ToolCallPart }) {
+function Approve({ part }: { readonly part: ToolCallPart }) {
   const approved = part.approval?.approved === true;
   const [asked, setAsked] = useState(false);
   return (
     <div className="bg-muted/50 flex flex-col items-start gap-2 rounded-md p-3">
-      <p className="text-sm">This charge needs your approval in this replay.</p>
+      <p className="text-sm">This call needs your approval in this replay.</p>
       {approved ? (
         <p
           ref={asked ? (node) => node?.focus() : undefined}
@@ -232,7 +207,7 @@ function ApproveCharge({ part }: { readonly part: ToolCallPart }) {
           role="status"
         >
           <CheckIcon aria-hidden className="size-4" />
-          Approved. The next charge in this conversation runs.
+          Approved. The next call in this conversation runs.
         </p>
       ) : (
         <Button
@@ -242,7 +217,7 @@ function ApproveCharge({ part }: { readonly part: ToolCallPart }) {
             part.respondToApproval({ approved: true });
           }}
         >
-          Approve charge
+          Approve
         </Button>
       )}
     </div>

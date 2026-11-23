@@ -12,8 +12,7 @@
     "deploy": "bun run build && wrangler deploy",
     "dev": "vite",
     "preview": "vite preview",
-    "test": "vitest --run",
-    "demo:local-kill": "bash scripts/local-kill-demo.sh"
+    "test": "vitest --run"
   },
   "dependencies": {
     "@assistant-ui/react": "0.15.38",

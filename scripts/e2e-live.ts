@@ -11,9 +11,9 @@
  *   E2E_BASE_URL=https://pi-durable-replay.<account>.workers.dev E2E_CONTROL_TOKEN=... bun run scripts/e2e-live.ts
  *
  * Drives the real WebSocket protocol: create a session, submit a prompt that
- * makes the agent fan out three research subagents and charge credits, and
+ * makes the agent fan out three research subagents, and
  * assert the markers come back over the wire - subagent conversations, tool
- * calls, a Ledger entry in the session snapshot, and a cited summary. Also
+ * calls, and a cited summary. Also
  * round-trips a budgets change through the Control Panel's command.
  */
 
@@ -42,7 +42,6 @@ const ws = new WebSocket(`${wsBase}/api/sessions/${sessionId}`, {
   headers: { Authorization: `Bearer ${controlToken}` },
 } as unknown as string[]);
 const seen = {
-  ledger: 0,
   subagents: new Set<number>(),
   toolCalls: new Set<string>(),
   summarySeen: false,
@@ -57,7 +56,7 @@ ws.addEventListener("message", (event) => {
   const raw = String(event.data);
   let frame: {
     type?: string;
-    session?: { control?: { ledger?: unknown[]; tokenBudget?: number } };
+    session?: { control?: { tokenBudget?: number } };
     conversation?: { id?: number; owner?: unknown };
     ok?: boolean;
   };
@@ -68,22 +67,17 @@ ws.addEventListener("message", (event) => {
   }
   if (frame.type === "session.snapshot") {
     const control = frame.session?.control;
-    const ledger = control?.ledger ?? [];
-    if (ledger.length > seen.ledger) {
-      seen.ledger = ledger.length;
-      console.log("ledger:", JSON.stringify(ledger));
-    }
     if (control?.tokenBudget === 42_000) seen.budgetsEcho = true;
     if (!submitted) {
       submitted = true;
-      console.log("submitting research + charge prompt...");
+      console.log("submitting research prompt...");
       ws.send(
         JSON.stringify({
           type: "prompt.submit",
           requestId: "e2e-1",
           conversationId: 1,
           content:
-            "Research how kill switches work in durable agents using the research tool, then charge 10 credits with memo 'e2e live test' using charge_credits, then give me a short summary with citations.",
+            "Research how kill switches work in durable agents using the research tool, then give me a short summary with citations.",
         }),
       );
     } else if (!budgetsSent) {
@@ -107,7 +101,7 @@ ws.addEventListener("message", (event) => {
     console.log("command error:", raw.slice(0, 200));
   }
   if (raw.includes('"toolCall"')) {
-    for (const name of ["research", "search", "charge_credits"]) {
+    for (const name of ["research", "search"]) {
       if (raw.includes(`"${name}"`) && !seen.toolCalls.has(name)) {
         seen.toolCalls.add(name);
         console.log("tool call:", name);
@@ -123,9 +117,7 @@ ws.addEventListener("message", (event) => {
 while (Date.now() < deadline) {
   await new Promise((resolve) => setTimeout(resolve, 1000));
   if (
-    seen.ledger >= 1 &&
     seen.toolCalls.has("research") &&
-    seen.toolCalls.has("charge_credits") &&
     seen.subagents.size >= 3 &&
     seen.summarySeen &&
     seen.budgetsEcho
@@ -137,7 +129,6 @@ while (Date.now() < deadline) {
 console.log(
   "SUMMARY:",
   JSON.stringify({
-    ledgerEntries: seen.ledger,
     toolCalls: [...seen.toolCalls],
     subagents: seen.subagents.size,
     citedSummary: seen.summarySeen,
@@ -146,9 +137,7 @@ console.log(
   }),
 );
 const pass =
-  seen.ledger >= 1 &&
   seen.toolCalls.has("research") &&
-  seen.toolCalls.has("charge_credits") &&
   seen.subagents.size >= 3 &&
   seen.summarySeen &&
   seen.budgetsEcho;

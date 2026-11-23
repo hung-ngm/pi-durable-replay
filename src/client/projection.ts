@@ -360,7 +360,7 @@ function messageText(message: Message): string {
   }
 }
 
-const isBlockedCharge = (part: Part): part is ToolPart =>
+const isBlockedCall = (part: Part): part is ToolPart =>
   part.type === "tool-call" &&
   part.isError === true &&
   ((part.artifact ?? {}) as ToolArtifact).diagnostics?.some(
@@ -378,11 +378,11 @@ export function withReplayApproval(
     approved: replay.approvedAt === undefined ? undefined : true,
   };
   return messages.map((message) =>
-    message.content.some(isBlockedCharge)
+    message.content.some(isBlockedCall)
       ? {
           ...message,
           content: message.content.map((part) =>
-            isBlockedCharge(part) ? { ...part, approval } : part,
+            isBlockedCall(part) ? { ...part, approval } : part,
           ),
         }
       : message,

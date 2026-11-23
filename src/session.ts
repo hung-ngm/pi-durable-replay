@@ -24,7 +24,7 @@ import {
   readControl,
   setBudgets as setControlBudgets,
 } from "./control.ts";
-import { CrashDoc, LedgerDoc } from "./tools.ts";
+import { CrashDoc } from "./tools.ts";
 import { approveUnsafe, readReplay, replayFork, type ReplayState } from "./replay.ts";
 import {
   armCrashLoop,
@@ -34,7 +34,7 @@ import {
   noteCrashLoopAbort,
   readFaults,
 } from "./faults.ts";
-import { CHARGE_CREDITS_TOOL_NAME, CRASH_LOOP_TOOL_NAME } from "./tools.ts";
+import { CRASH_LOOP_TOOL_NAME } from "./tools.ts";
 import {
   InvalidClientCommand,
   MAX_CLIENT_FRAME_CHARACTERS,
@@ -599,45 +599,6 @@ export class Session extends DurableObject<Env> {
       }
       case "fault.inject": {
         const conversationId = command.conversationId as ConversationId;
-        if (command.kind === "interrupt-unsafe") {
-          const taskId = await findLiveToolTask(
-            this.#harness,
-            conversationId,
-            CHARGE_CREDITS_TOOL_NAME,
-            BACKGROUND_CONTEXT,
-          );
-          if (taskId !== undefined) {
-            await killControl(
-              this.#harness,
-              this.#activity.value,
-              { scope: "tool", conversationId, taskId, reason: "manual" },
-              BACKGROUND_CONTEXT,
-            );
-          }
-          await this.#broadcastSessionSnapshot();
-          this.#send(
-            socket,
-            taskId === undefined
-              ? {
-                  type: "command.result",
-                  command: command.type,
-                  requestId: command.requestId,
-                  ok: false,
-                  error: {
-                    code: "no_live_unsafe_tool",
-                    message: "No charge_credits call is running in this conversation.",
-                  },
-                }
-              : {
-                  type: "command.result",
-                  command: command.type,
-                  requestId: command.requestId,
-                  ok: true,
-                  conversationId,
-                },
-          );
-          return;
-        }
         if (command.kind === "crash-loop") {
           await armCrashLoop(this.#harness, conversationId, BACKGROUND_CONTEXT);
           this.#fastHeartbeat = true;
@@ -866,9 +827,6 @@ export class Session extends DurableObject<Env> {
 
   async #controlView(): Promise<ControlView> {
     const control = await readControl(this.#harness, BACKGROUND_CONTEXT);
-    const ledger = (
-      (await this.#harness.snapshot(LedgerDoc, BACKGROUND_CONTEXT))?.entries ?? []
-    ).map((entry) => ({ ...entry }));
     const conversations = await this.#sessionSnapshot();
     const replays: Record<string, ReplayState> = {};
     for (const conversation of conversations) {
@@ -885,7 +843,6 @@ export class Session extends DurableObject<Env> {
       tokenBudget: control.tokenBudget,
       turnBudget: control.turnBudget,
       kills: control.kills,
-      ledger,
       replays,
       crashAttempts,
     };

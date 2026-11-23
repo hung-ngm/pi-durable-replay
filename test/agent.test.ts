@@ -11,7 +11,6 @@ import { Harness, MemoryStorage } from "@earendil-works/pi-durable";
 import { describe, expect, it } from "vitest";
 import { createAgentHarnessOptions } from "../src/agent.ts";
 import { searchCorpus } from "../src/corpus.ts";
-import { LedgerDoc } from "../src/tools.ts";
 
 const context = BACKGROUND_CONTEXT;
 
@@ -136,61 +135,6 @@ describe("research agent", () => {
       const children = conversations.items.filter((c) => c.owner !== undefined);
       expect(children).toHaveLength(3);
       expect(children.every((c) => c.owner !== undefined && "taskId" in c.owner)).toBe(true);
-    } finally {
-      await harness.close(context);
-    }
-  });
-
-  it("writes exactly one ledger entry per charge, keyed by the tool task ID", async () => {
-    const { harness, root } = await openAgent([
-      fauxAssistantMessage(
-        [fauxToolCall("charge_credits", { credits: 25, memo: "premium depth" })],
-        { stopReason: "toolUse" },
-      ),
-      fauxAssistantMessage([fauxText("Charged.")]),
-      fauxAssistantMessage([fauxToolCall("charge_credits", { credits: 40, memo: "more depth" })], {
-        stopReason: "toolUse",
-      }),
-      fauxAssistantMessage([fauxText("Charged again.")]),
-    ]);
-    try {
-      const first = await root.submit(
-        { type: "input", content: "Charge 25 credits for premium depth" },
-        context,
-      );
-      await first.wait(context);
-      // Snapshot inside the commit: a doc overlay cannot be read after it settles.
-      let ledger = await harness.commit(
-        async (tx) => ({
-          entries: (await tx.doc(LedgerDoc)).entries.map((e) => ({
-            taskId: e.taskId,
-            credits: e.credits,
-            memo: e.memo,
-            at: e.at,
-          })),
-        }),
-        context,
-      );
-      expect(ledger.entries).toHaveLength(1);
-      expect(ledger.entries[0]).toMatchObject({ credits: 25, memo: "premium depth" });
-      expect(ledger.entries[0]?.taskId).toBeTruthy();
-
-      const second = await root.submit({ type: "input", content: "Charge 40 more" }, context);
-      await second.wait(context);
-      ledger = await harness.commit(
-        async (tx) => ({
-          entries: (await tx.doc(LedgerDoc)).entries.map((e) => ({
-            taskId: e.taskId,
-            credits: e.credits,
-            memo: e.memo,
-            at: e.at,
-          })),
-        }),
-        context,
-      );
-      expect(ledger.entries).toHaveLength(2);
-      expect(ledger.entries[1]).toMatchObject({ credits: 40, memo: "more depth" });
-      expect(ledger.entries[1]?.taskId).not.toBe(ledger.entries[0]?.taskId);
     } finally {
       await harness.close(context);
     }

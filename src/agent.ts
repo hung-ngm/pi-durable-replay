@@ -26,7 +26,7 @@ export function createAgentHarnessOptions(
       section(
         "preamble",
         () =>
-          "You are a research agent. For a research question, call research to fan out three subagents, then synthesize their answers and cite corpus document IDs. Use search directly for a quick lookup. charge_credits buys premium corpus access with fake credits; charge only when the user asks for premium depth. User messages may begin with a display name in brackets; treat it as speaker attribution.",
+          "You are a research agent. For a research question, call research to fan out three subagents, then synthesize their answers and cite corpus document IDs. Use search directly for a quick lookup. User messages may begin with a display name in brackets; treat it as speaker attribution.",
         { tag: false },
       ),
       section(

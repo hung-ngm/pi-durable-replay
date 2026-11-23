@@ -9,7 +9,7 @@ import {
   type Harness,
 } from "@earendil-works/pi-durable";
 import { REPLAY_BLOCK_MARKER } from "./protocol.ts";
-import { CHARGE_CREDITS_TOOL_NAME, LedgerDoc } from "./tools.ts";
+import { LOOP_FOREVER_TOOL_NAME } from "./tools.ts";
 
 export type CarriedToolResult = {
   callId: string;
@@ -86,10 +86,8 @@ export async function replayFork(
     const fork = await tx.forkConversation(sourceConversationId, entryId, {
       ownership: { kind: "ownerless" },
     });
-    const ledger = await tx.doc(LedgerDoc);
-    const pendingUnsafeApproval = ledger.entries.some(
-      (entry) => entry.conversationId === (sourceConversationId as number),
-    );
+    // Disarmed until the gate is pointed at loop_forever (docs/plans/0002, unit 4).
+    const pendingUnsafeApproval = false;
     const doc = await tx.doc(ReplayDoc, fork.id);
     doc.sourceConversationId = sourceConversationId as number;
     doc.forkEntryId = entryId as number;
@@ -137,7 +135,7 @@ export async function approveUnsafe(
  */
 export const unsafeGateHook = hook(ToolTask, {
   beforeTool: async (call, api, context) => {
-    if (call.name !== CHARGE_CREDITS_TOOL_NAME) return undefined;
+    if (call.name !== LOOP_FOREVER_TOOL_NAME) return undefined;
     const replay = await api.snapshot(ReplayDoc, api.conversationId, context);
     if (replay === undefined || !replay.pendingUnsafeApproval) return undefined;
     return {

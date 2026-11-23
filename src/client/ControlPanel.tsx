@@ -11,10 +11,7 @@ interface ControlPanelProps {
   readonly onSetBudgets: (tokenBudget: number, turnBudget: number) => void;
   readonly onAbortConversation: (conversationId: number) => void;
   readonly onAbortSession: () => void;
-  readonly onInjectFault: (
-    conversationId: number,
-    kind: "interrupt-unsafe" | "crash-loop" | "evict",
-  ) => void;
+  readonly onInjectFault: (conversationId: number, kind: "crash-loop" | "evict") => void;
 }
 
 const totalTokens = (usage: UsageState | undefined): number => {
@@ -27,7 +24,7 @@ const totalTokens = (usage: UsageState | undefined): number => {
   return total;
 };
 
-/** Budgets, kills, the ledger, and usage: the control plane in one panel (SPEC Shape A). */
+/** Budgets, kills, faults, replay provenance, and usage: the control plane in one panel. */
 export function ControlPanel({
   control,
   usage,
@@ -120,7 +117,7 @@ export function ControlPanel({
           </p>
           {replay.pendingUnsafeApproval ? (
             <p className="text-muted-foreground text-xs" role="status">
-              An unsafe tool result was carried forward. A charge here waits for your approval on
+              The source conversation ran an unsafe tool. Running it here waits for your approval on
               the blocked call.
             </p>
           ) : replay.approvedAt === undefined ? null : (
@@ -136,18 +133,6 @@ export function ControlPanel({
             : ` - crash_loop attempts so far: ${control.crashAttempts}`}
         </p>
         <div className="flex flex-wrap gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={activeConversationId === undefined}
-            onClick={() => {
-              if (activeConversationId !== undefined) {
-                onInjectFault(activeConversationId, "interrupt-unsafe");
-              }
-            }}
-          >
-            Interrupt unsafe tool
-          </Button>
           <Button
             variant="secondary"
             size="sm"
@@ -199,20 +184,6 @@ export function ControlPanel({
                 {kill.conversationId === undefined ? "" : ` · conversation #${kill.conversationId}`}
                 {kill.taskId === undefined ? "" : ` · task #${kill.taskId}`} ·{" "}
                 {new Date(kill.at).toLocaleTimeString()}
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-
-      {control === undefined || control.ledger.length === 0 ? null : (
-        <>
-          <h3>Ledger</h3>
-          <ul className="text-muted-foreground flex flex-col gap-1 text-xs">
-            {control.ledger.map((entry) => (
-              <li key={entry.taskId}>
-                {entry.credits} credits · {entry.memo} · task #{entry.taskId} ·{" "}
-                {new Date(entry.at).toLocaleTimeString()}
               </li>
             ))}
           </ul>

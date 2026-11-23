@@ -14,7 +14,6 @@ import { searchCorpus, type CorpusHit } from "./corpus.ts";
 
 export const SEARCH_TOOL_NAME = "search";
 export const RESEARCH_TOOL_NAME = "research";
-export const CHARGE_CREDITS_TOOL_NAME = "charge_credits";
 export const SLOW_SEARCH_TOOL_NAME = "slow_search";
 export const LOOP_FOREVER_TOOL_NAME = "loop_forever";
 export const CRASH_LOOP_TOOL_NAME = "crash_loop";
@@ -28,39 +27,9 @@ export const CrashDoc = defineDoc<{ attempts: number }>({
   checkpointWhen: () => true,
 });
 
-export type LedgerEntry = {
-  taskId: string;
-  /** The conversation the charge was made in: the scope of its idempotency. */
-  conversationId: number;
-  credits: number;
-  memo: string;
-  at: number;
-};
-
-/**
- * Every charge ever made in this Session, one entry per charge, recording the tool
- * task that made it (SPEC Q17). A charge is idempotent on its intent - conversation,
- * credits, and memo - so a model that retries an interrupted charge gets the entry
- * that already landed. The ledger, not the transcript, is the exactly-once proof.
- */
-export const LedgerDoc = defineDoc<{ entries: LedgerEntry[] }>({
-  kind: "app.ledger",
-  version: 1,
-  scope: "session",
-  initial: () => ({ entries: [] }),
-  // Store a small base whenever the ledger is empty, so replay stays short.
-  checkpointWhen: (value) => value.entries.length === 0,
-});
-
 export interface ToolConfig {
   readonly searchBackend: string;
   readonly exaApiKey?: string;
-  /**
-   * How long charge_credits' simulated provider call takes. 300ms in production;
-   * demos widen it so an interrupt or a kill -9 lands deterministically inside
-   * the window between the ledger commit and the provider's answer.
-   */
-  readonly chargeDelayMs?: number;
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -92,7 +61,6 @@ async function searchExa(query: string, apiKey: string, limit = 3): Promise<read
 export interface AgentTools {
   readonly searchTool: ToolRegistration;
   readonly researchTool: ToolRegistration;
-  readonly chargeCreditsTool: ToolRegistration;
   readonly slowSearchTool: ToolRegistration;
   readonly loopForeverTool: ToolRegistration;
   readonly crashLoopTool: ToolRegistration;
@@ -210,62 +178,6 @@ export function createTools(config: ToolConfig): AgentTools {
     },
   };
 
-  const chargeCreditsTool: ToolRegistration = {
-    name: CHARGE_CREDITS_TOOL_NAME,
-    description:
-      "Charge fake credits for premium corpus access. UNSAFE: this moves (fake) money. Idempotent per conversation: the same credits and memo charge once, and a retry returns the existing charge. Use a distinct memo for a distinct purchase.",
-    parameters: obj({
-      credits: int({ minimum: 1, maximum: 10_000, description: "Credits to charge" }),
-      memo: str({ description: "What the charge is for" }),
-    }),
-    replay: "unsafe",
-    execute: async (args, api, context) => {
-      const { credits, memo } = args as { credits: number; memo: string };
-      // Intent before effect: the ledger entry commits before the provider call. The
-      // model only learns that an interrupted charge "may have partially run", so it
-      // may retry; the retry matches the landed entry by intent and charges nothing.
-      const conversationId = api.conversationId as number;
-      const { entry, existed } = await api.commit(async (tx) => {
-        const ledger = await tx.doc(LedgerDoc);
-        const existing = ledger.entries.find(
-          (e) => e.conversationId === conversationId && e.credits === credits && e.memo === memo,
-        );
-        if (existing !== undefined) return { entry: { ...existing }, existed: true };
-        const created: LedgerEntry = {
-          taskId: String(api.taskId),
-          conversationId,
-          credits,
-          memo,
-          at: api.now(),
-        };
-        ledger.entries.push(created);
-        return { entry: created, existed: false };
-      }, context);
-      if (existed) {
-        return {
-          output: [
-            {
-              type: "text" as const,
-              text: `Already charged ${entry.credits} credits for ${JSON.stringify(entry.memo)} in this conversation (ledger entry from tool task ${entry.taskId}). No new charge was made.`,
-            },
-          ],
-          details: entry,
-        };
-      }
-      // The simulated provider call: deliberately after the durable intent.
-      await sleep(config.chargeDelayMs ?? 300);
-      return {
-        output: [
-          {
-            type: "text" as const,
-            text: `Charged ${entry.credits} credits for ${JSON.stringify(entry.memo)}. Ledger entry from tool task ${entry.taskId}.`,
-          },
-        ],
-        details: entry,
-      };
-    },
-  };
-
   const slowSearchTool: ToolRegistration = {
     name: SLOW_SEARCH_TOOL_NAME,
     description:
@@ -366,18 +278,10 @@ export function createTools(config: ToolConfig): AgentTools {
   return {
     searchTool,
     researchTool,
-    chargeCreditsTool,
     slowSearchTool,
     loopForeverTool,
     crashLoopTool,
-    all: [
-      searchTool,
-      researchTool,
-      chargeCreditsTool,
-      slowSearchTool,
-      loopForeverTool,
-      crashLoopTool,
-    ],
+    all: [searchTool, researchTool, slowSearchTool, loopForeverTool, crashLoopTool],
     childExtensions: [searchExtension, loopExtension],
   };
 }

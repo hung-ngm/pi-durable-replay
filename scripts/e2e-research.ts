@@ -1,7 +1,7 @@
 /**
  * Bun-level live E2E (not part of the test suite): runs the real agent with a
  * real OPENAI_API_KEY over file-backed storage - research fan-out (3 subagent
- * conversations), a charge, the Ledger, and a cited summary.
+ * conversations) and a cited summary.
  *
  *   OPENAI_API_KEY=... bun run scripts/e2e-research.ts
  *
@@ -12,7 +12,6 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Harness } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { createAgentHarnessOptions } from "../src/agent.ts";
-import { LedgerDoc } from "../src/tools.ts";
 const context = BACKGROUND_CONTEXT;
 const storage = await openNodeSqliteStorage("/tmp/e2e-research.sqlite");
 const harness = await Harness.open(
@@ -25,7 +24,7 @@ const sub = await root.submit(
   {
     type: "input",
     content:
-      "Research how kill switches work in durable agents using the research tool, then charge 10 credits with memo 'e2e bun research' using charge_credits, then give me a short summary with citations.",
+      "Research how kill switches work in durable agents using the research tool, then give me a short summary with citations.",
     requestId: "e2e-research-1",
   },
   context,
@@ -50,7 +49,6 @@ for (const e of entries.items)
       }
   }
 console.log("tools called:", [...tools].join(", "));
-console.log("ledger:", JSON.stringify((await harness.snapshot(LedgerDoc, context))?.entries ?? []));
 // The final summary's citation typography is the model's choice; the flow
 // claim is a substantive answer about the researched topic.
 const texts = entries.items.flatMap((e) =>
@@ -62,11 +60,7 @@ const finalText = texts.find((t) => t.toLowerCase().includes("kill switch")) ?? 
 console.log("answer excerpt:", finalText.slice(0, 400));
 answer = finalText;
 const pass =
-  settled.status === "done" &&
-  owned.length === 3 &&
-  tools.has("research") &&
-  tools.has("charge_credits") &&
-  answer.length > 100;
+  settled.status === "done" && owned.length === 3 && tools.has("research") && answer.length > 100;
 console.log(pass ? "BUN E2E RESEARCH: PASS" : "BUN E2E RESEARCH: FAIL");
 await harness.close(context);
 process.exit(pass ? 0 : 1);
