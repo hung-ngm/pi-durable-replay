@@ -9,6 +9,7 @@ interface ControlPanelProps {
   readonly onSetBudgets: (tokenBudget: number, turnBudget: number) => void;
   readonly onAbortConversation: (conversationId: number) => void;
   readonly onAbortSession: () => void;
+  readonly onApproveUnsafe: (conversationId: number) => void;
 }
 
 const totalTokens = (usage: UsageState | undefined): number => {
@@ -29,6 +30,7 @@ export function ControlPanel({
   onSetBudgets,
   onAbortConversation,
   onAbortSession,
+  onApproveUnsafe,
 }: ControlPanelProps) {
   const [tokenBudget, setTokenBudget] = useState("");
   const [turnBudget, setTurnBudget] = useState("");
@@ -49,6 +51,10 @@ export function ControlPanel({
   };
 
   const lastKill = control?.kills[control.kills.length - 1];
+  const replay =
+    control === undefined || activeConversationId === undefined
+      ? undefined
+      : control.replays[String(activeConversationId)];
 
   return (
     <section className="control-panel" aria-labelledby="control-heading">
@@ -89,6 +95,37 @@ export function ControlPanel({
         </p>
       )}
 
+      {replay === undefined ? null : (
+        <div className="control-replay">
+          <p className="control-note">
+            Fork Replay of conversation #{replay.sourceConversationId}, forked at entry #
+            {replay.forkEntryId}. Carried forward:{" "}
+            {replay.carried.length === 0
+              ? "no tool results"
+              : replay.carried.map((entry) => entry.name).join(", ")}
+            .
+          </p>
+          {replay.pendingUnsafeApproval ? (
+            <>
+              <p className="control-note">
+                An unsafe tool result was carried forward. It will not run again without your
+                approval.
+              </p>
+              <button
+                className="text-button"
+                type="button"
+                onClick={() => {
+                  if (activeConversationId !== undefined) onApproveUnsafe(activeConversationId);
+                }}
+              >
+                Approve unsafe tools in this replay
+              </button>
+            </>
+          ) : replay.approvedAt === undefined ? null : (
+            <p className="control-note">Unsafe tools approved for this replay.</p>
+          )}
+        </div>
+      )}
       <div className="control-actions">
         <button
           type="button"

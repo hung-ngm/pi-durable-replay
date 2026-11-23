@@ -310,6 +310,7 @@ export function ChatSession({ sessionId, username }: ChatSessionProps) {
           onSetBudgets={session.setBudgets}
           onAbortConversation={session.abortConversation}
           onAbortSession={session.abortSession}
+          onApproveUnsafe={session.approveUnsafe}
         />
       </aside>
 
@@ -369,6 +370,7 @@ export function ChatSession({ sessionId, username }: ChatSessionProps) {
                 gaps={activeConversation.gaps}
                 tools={activeConversation.tools}
                 runActive={activeConversation.live !== null}
+                onReplay={(entryId) => session.replayFork(activeConversation.id, entryId)}
                 onFork={
                   activeConversationId === undefined
                     ? undefined

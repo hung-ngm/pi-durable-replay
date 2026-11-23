@@ -1,6 +1,7 @@
 import { createModels } from "@earendil-works/pi-ai/models";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { createTools, type ToolConfig } from "./tools.ts";
+import { unsafeGateHook } from "./replay.ts";
 import {
   configure,
   createRegistry,
@@ -20,6 +21,7 @@ export function createAgentHarnessOptions(
   const agentExtension = defineExtension({
     name: "research-agent",
     tools: tools.all,
+    hooks: [unsafeGateHook],
     sections: [
       section(
         "preamble",

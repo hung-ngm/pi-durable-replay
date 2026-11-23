@@ -10,7 +10,9 @@ export type RetriableCommand = Extract<
       | "task.abort"
       | "conversation.abort"
       | "session.abort"
-      | "control.setBudgets";
+      | "control.setBudgets"
+      | "run.replayFork"
+      | "run.approveUnsafe";
   }
 >;
 

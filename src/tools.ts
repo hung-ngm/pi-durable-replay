@@ -214,7 +214,7 @@ export function createTools(config: ToolConfig): AgentTools {
         return created;
       }, context);
       // The simulated provider call: deliberately after the durable intent.
-      await sleep(50);
+      await sleep(300);
       return {
         output: [
           {

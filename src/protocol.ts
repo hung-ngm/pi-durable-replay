@@ -1,5 +1,6 @@
 import { assertValidOp, type Op } from "@earendil-works/chord/delta";
 import type { KillRecord } from "./control.ts";
+import type { ReplayState } from "./replay.ts";
 import type { LedgerEntry } from "./tools.ts";
 
 import type {
@@ -121,6 +122,19 @@ export type ClientCommand =
       readonly requestId: string;
     }
   | {
+      /** Fork Replay: fork at entryId and write a ReplayDoc on the new conversation. */
+      readonly type: "run.replayFork";
+      readonly requestId: string;
+      readonly conversationId: number;
+      readonly entryId: number;
+    }
+  | {
+      /** Approve unsafe tools in a Fork Replay conversation. */
+      readonly type: "run.approveUnsafe";
+      readonly requestId: string;
+      readonly conversationId: number;
+    }
+  | {
       readonly type: "control.setBudgets";
       readonly requestId: string;
       readonly tokenBudget: number;
@@ -134,6 +148,8 @@ export interface ControlView {
   readonly turnBudget: number;
   readonly kills: readonly KillRecord[];
   readonly ledger: readonly LedgerEntry[];
+  /** Fork Replay provenance by conversation ID, for conversations that are replays. */
+  readonly replays: Readonly<Record<string, ReplayState>>;
 }
 
 export type CommandResult =
@@ -244,6 +260,8 @@ const commandTypes = new Set<ClientCommandType>([
   "conversation.abort",
   "session.abort",
   "control.setBudgets",
+  "run.replayFork",
+  "run.approveUnsafe",
 ]);
 
 const requireCommandType = (value: unknown): ClientCommandType => {
@@ -428,6 +446,19 @@ export function parseClientCommand(message: string): ClientCommand {
         requestId,
         conversationId: requireId(value.conversationId, "conversationId"),
       };
+    case "run.replayFork":
+      return {
+        type: value.type,
+        requestId,
+        conversationId: requireId(value.conversationId, "conversationId"),
+        entryId: requireId(value.entryId, "entryId"),
+      };
+    case "run.approveUnsafe":
+      return {
+        type: value.type,
+        requestId,
+        conversationId: requireId(value.conversationId, "conversationId"),
+      };
     case "control.setBudgets": {
       const budget = (name: string, v: unknown): number => {
         if (typeof v !== "number" || !Number.isSafeInteger(v) || v < 1 || v > 100_000_000) {
@@ -507,6 +538,7 @@ function parseControlView(value: unknown): ControlView {
     turnBudget: value.turnBudget,
     kills: value.kills as KillRecord[],
     ledger: value.ledger as LedgerEntry[],
+    replays: (isRecord(value.replays) ? value.replays : {}) as Record<string, ReplayState>,
   };
 }
 

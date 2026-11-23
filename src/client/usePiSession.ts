@@ -47,6 +47,8 @@ export interface PiSession {
   readonly activity: TaskGraph | undefined;
   readonly control: ControlView | undefined;
   readonly error: string | undefined;
+  replayFork(conversationId: number, entryId: number): void;
+  approveUnsafe(conversationId: number): void;
   abortTask(taskId: number, scope: "run" | "tool"): void;
   abortConversation(conversationId: number): void;
   abortSession(): void;
@@ -353,6 +355,25 @@ export function usePiSession(
     [outbox, sendRetriable],
   );
 
+  const replayFork = useCallback(
+    (conversationId: number, entryId: number) => {
+      sendRetriable({
+        type: "run.replayFork",
+        requestId: crypto.randomUUID(),
+        conversationId,
+        entryId,
+      });
+    },
+    [sendRetriable],
+  );
+
+  const approveUnsafe = useCallback(
+    (conversationId: number) => {
+      sendRetriable({ type: "run.approveUnsafe", requestId: crypto.randomUUID(), conversationId });
+    },
+    [sendRetriable],
+  );
+
   const abortTask = useCallback(
     (taskId: number, scope: "run" | "tool") => {
       sendRetriable({ type: "task.abort", requestId: crypto.randomUUID(), taskId, scope });
@@ -414,6 +435,8 @@ export function usePiSession(
     activity: state.activity,
     control: state.control,
     error: state.error,
+    replayFork,
+    approveUnsafe,
     abortTask,
     abortConversation,
     abortSession,

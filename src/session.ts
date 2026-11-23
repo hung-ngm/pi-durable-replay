@@ -24,6 +24,7 @@ import {
   setBudgets as setControlBudgets,
 } from "./control.ts";
 import { LedgerDoc } from "./tools.ts";
+import { approveUnsafe, readReplay, replayFork, type ReplayState } from "./replay.ts";
 import {
   InvalidClientCommand,
   MAX_CLIENT_FRAME_CHARACTERS,
@@ -573,6 +574,40 @@ export class Session extends DurableObject<Env> {
         });
         return;
       }
+      case "run.replayFork": {
+        const result = await replayFork(
+          this.#harness,
+          command.conversationId as ConversationId,
+          command.entryId as EntryId,
+          BACKGROUND_CONTEXT,
+        );
+        await this.#watchConversation(socket, result.conversationId);
+        await this.#broadcastSessionSnapshot();
+        this.#send(socket, {
+          type: "command.result",
+          command: command.type,
+          requestId: command.requestId,
+          ok: true,
+          conversationId: result.conversationId,
+        });
+        return;
+      }
+      case "run.approveUnsafe": {
+        await approveUnsafe(
+          this.#harness,
+          command.conversationId as ConversationId,
+          BACKGROUND_CONTEXT,
+        );
+        await this.#broadcastSessionSnapshot();
+        this.#send(socket, {
+          type: "command.result",
+          command: command.type,
+          requestId: command.requestId,
+          ok: true,
+          conversationId: command.conversationId,
+        });
+        return;
+      }
       case "control.setBudgets": {
         await setControlBudgets(
           this.#harness,
@@ -650,11 +685,22 @@ export class Session extends DurableObject<Env> {
       const doc = await tx.doc(LedgerDoc);
       return doc.entries.map((entry) => ({ ...entry }));
     }, BACKGROUND_CONTEXT);
+    const conversations = await this.#sessionSnapshot();
+    const replays: Record<string, ReplayState> = {};
+    for (const conversation of conversations) {
+      const replay = await readReplay(
+        this.#harness,
+        conversation.id as ConversationId,
+        BACKGROUND_CONTEXT,
+      );
+      if (replay !== undefined) replays[String(conversation.id)] = replay;
+    }
     return {
       tokenBudget: control.tokenBudget,
       turnBudget: control.turnBudget,
       kills: control.kills,
       ledger,
+      replays,
     };
   }
 

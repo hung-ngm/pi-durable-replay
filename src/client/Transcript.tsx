@@ -13,6 +13,7 @@ interface TranscriptListProps {
   readonly tools: readonly ToolProgress[];
   readonly runActive: boolean;
   readonly onFork?: (entryId: number) => void;
+  readonly onReplay?: (entryId: number) => void;
   readonly onFillGap?: (gap: TranscriptGap) => void;
 }
 
@@ -22,6 +23,7 @@ export function TranscriptList({
   tools,
   runActive,
   onFork,
+  onReplay,
   onFillGap,
 }: TranscriptListProps) {
   const { resultsByRequest, groupedResultIds } = correlateToolResults(entries);
@@ -62,11 +64,13 @@ export function TranscriptList({
             <TranscriptMessage
               entry={entry}
               onFork={onFork === undefined ? undefined : () => onFork(entry.id)}
+              onReplay={onReplay === undefined ? undefined : () => onReplay(entry.id)}
             />
           ) : (
             <ToolRequest
               entry={entry}
               onFork={onFork === undefined ? undefined : () => onFork(entry.id)}
+              onReplay={onReplay === undefined ? undefined : () => onReplay(entry.id)}
             />
           )}
           <ol className="tool-executions" aria-label="Tool calls">
@@ -234,9 +238,11 @@ const roleLabel: Record<TranscriptEntry["role"], string> = {
 function ToolRequest({
   entry,
   onFork,
+  onReplay,
 }: {
   readonly entry: TranscriptEntry;
   readonly onFork?: () => void;
+  readonly onReplay?: () => void;
 }) {
   const timestamp = entry.timestamp === undefined ? undefined : new Date(entry.timestamp);
 
@@ -250,6 +256,7 @@ function ToolRequest({
           timestamp={timestamp}
         />
         {onFork === undefined ? null : <ForkAction onFork={onFork} />}
+        {onReplay === undefined ? null : <ReplayAction onReplay={onReplay} />}
       </header>
     </article>
   );
@@ -258,9 +265,11 @@ function ToolRequest({
 export function TranscriptMessage({
   entry,
   onFork,
+  onReplay,
 }: {
   readonly entry: TranscriptEntry;
   readonly onFork?: () => void;
+  readonly onReplay?: () => void;
 }) {
   const timestamp = entry.timestamp === undefined ? undefined : new Date(entry.timestamp);
 
@@ -269,6 +278,7 @@ export function TranscriptMessage({
       <header>
         <EntryTitle entryId={entry.id} label={roleLabel[entry.role]} timestamp={timestamp} />
         {!entry.canFork || onFork === undefined ? null : <ForkAction onFork={onFork} />}
+        {!entry.canFork || onReplay === undefined ? null : <ReplayAction onReplay={onReplay} />}
       </header>
       <MessageText text={entry.text} />
       {entry.diagnostics === undefined ? null : <Diagnostics diagnostics={entry.diagnostics} />}
@@ -293,6 +303,20 @@ function EntryTitle({
       {detail === undefined ? null : <span>{detail}</span>}
       {timestamp === undefined ? null : <MessageTime timestamp={timestamp} />}
     </div>
+  );
+}
+
+function ReplayAction({ onReplay }: { readonly onReplay: () => void }) {
+  return (
+    <button
+      className="text-button transcript-fork"
+      type="button"
+      aria-label="Fork Replay from this entry"
+      title="Fork Replay: carry completed tool results forward; unsafe tools need fresh approval"
+      onClick={onReplay}
+    >
+      Replay
+    </button>
   );
 }
 
