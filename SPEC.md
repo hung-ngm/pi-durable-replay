@@ -264,7 +264,7 @@ One control token, the `CONTROL_TOKEN` Worker secret, gating the API at the seam
 
 ## Deploy
 
-Cloudflare Workers, name `pi-durable-replay`, first deploy to its `workers.dev` address. Secrets: `OPENAI_API_KEY`, `CONTROL_TOKEN`. Deploy is gated on the operator's explicit go-ahead at deploy time, with the exact wrangler target shown first. Custom domain is out of v1.
+Cloudflare Workers, name `pi-durable-replay`, first deploy to its `workers.dev` address. GitHub Actions deploys on every push to `main`. Worker secrets: `OPENAI_API_KEY`, `CONTROL_TOKEN`, and `EXA_API_KEY`. Deploy is gated on the operator's explicit go-ahead at deploy time, with the exact wrangler target shown first. Custom domain is out of v1.
 
 ## Acceptance tests (behavior, not implementation)
 
@@ -283,6 +283,5 @@ Cloudflare Workers, name `pi-durable-replay`, first deploy to its `workers.dev` 
 - A cross-session dashboard or any second service (Shape B).
 - Accounts, multi-tenancy, billing, real payments.
 - A coding agent workload (Cloudflare gives tools no real shell or filesystem in this design).
-- Real search as the default backend.
 - Custom domain.
 - Replacing Vitest with `bun test`.

@@ -1,93 +1,116 @@
 # pi-durable-replay
 
-A control plane for durable agent runs, built on [`@earendil-works/pi-durable`](https://www.npmjs.com/package/@earendil-works/pi-durable) running in a Cloudflare Durable Object: replay failed runs without re-firing their tools, and kill runaway loops before they spend. Forked from [`earendil-works/pi-durable-cloudflare`](https://github.com/earendil-works/pi-durable-cloudflare); see [SPEC.md](SPEC.md) for the product definition and [docs/adr](docs/adr) for the decisions.
+A control plane for durable agent runs on Cloudflare. You can replay a failed run without firing its tools again, and you can kill a runaway loop before it spends your budget.
 
-Start with the [Pi Durable announcement](https://earendil.com/posts/pi-durable/) for the ideas behind the harness.
-
-Pi Durable is experimental, so its APIs may still change.
-
-## What you can try
-
-- Ask the research agent a question: it fans out to three parallel subagent conversations, searches the web through Exa (or a built-in corpus in tests and local runs), and synthesizes an answer with citations.
-- Watch every run as a live task graph in the Activity panel, and kill work at four scopes: a tool, a run, a conversation, or the whole session.
-- Set per-run budgets (default 100,000 tokens or 30 turns) in the Control Panel. A run that crosses one is budget-killed, and the panel names which budget fired. Budget edits apply to the next run only.
-- Fail a run, then use Replay on an earlier entry: Fork Replay carries completed tool results forward as history, so safe tools never run again, and the unsafe `charge_credits` tool stays blocked until you approve it in the Control Panel. The Ledger beside the transcript proves each charge landed exactly once.
-- Inject faults from the Control Panel: interrupt a live charge, arm a crash loop that cuts the object off until the tool ends at its restart limit, or evict the Durable Object and watch the run resume through its alarm.
+The app runs [`@earendil-works/pi-durable`](https://www.npmjs.com/package/@earendil-works/pi-durable) inside one Durable Object per session. It is forked from [`earendil-works/pi-durable-cloudflare`](https://github.com/earendil-works/pi-durable-cloudflare). [SPEC.md](SPEC.md) defines the product, [GLOSSARY.md](GLOSSARY.md) defines its terms, and [docs/adr](docs/adr) records the decisions. Pi Durable is experimental, so its APIs may change.
 
 This is a single-user tool, not a production service.
 
+## Core features
+
+| Feature             | What it does                                                                                                                                                                           | Code                               |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| Research agent      | Splits a question across three parallel subagent conversations, searches the web through Exa, and answers with citations.                                                              | `src/agent.ts`, `src/tools.ts`     |
+| Live task graph     | The **Activity** panel shows each run, its tool calls, and the subagents they started.                                                                                                 | `src/client/ActivityPanel.tsx`     |
+| Kill at four scopes | Stops one tool call, one run, one conversation, or every conversation. Stopping a task also stops the work it started, from the bottom up.                                             | `src/session.ts`, `src/control.ts` |
+| Budget kill         | Stops a run that crosses its token or turn budget, 100,000 tokens or 30 turns by default. The **Control** panel names the budget that fired. A budget edit applies from the next run.  | `src/control.ts`                   |
+| Fork Replay         | Starts a new conversation from an earlier message. Completed tool results carry over, so safe tools do not run again. `charge_credits` stays blocked until you approve it.             | `src/replay.ts`                    |
+| Exactly-once charge | `charge_credits` writes one Ledger entry per conversation, amount, and memo. A retried charge returns the existing entry.                                                              | `src/tools.ts`                     |
+| Crash recovery      | After an eviction or a crash, the Durable Object alarm wakes the session and the run resumes from its last checkpoint. A tool that crashes 5 times in a row ends with `restart_limit`. | `src/session.ts`, `src/faults.ts`  |
+| Fault injection     | The **Control** panel can interrupt a live charge, start a crash loop, or evict the Durable Object.                                                                                    | `src/faults.ts`                    |
+| One-token sign-in   | You enter `CONTROL_TOKEN` once. The browser keeps an `HttpOnly` cookie that every tab and WebSocket sends. Scripts send `Authorization: Bearer`.                                       | `src/index.ts`                     |
+
+## How it works
+
+The Worker checks the token and forwards each session to its own Durable Object. That object holds every conversation, task, and document of the session in its SQLite store, so a crash or an eviction loses nothing that was committed.
+
+```mermaid
+flowchart LR
+	Browser["Browser UI<br/>src/client"] -- "cookie or Bearer token" --> Worker["Worker<br/>src/index.ts"]
+	Worker -- "SESSIONS.getByName(id)" --> Session
+
+	subgraph Session["Session Durable Object, one per session"]
+		Harness["Pi Durable Harness"]
+		Agent["research agent and tools<br/>src/agent.ts, src/tools.ts"]
+		Control["budget guard<br/>src/control.ts"]
+		Replay["Fork Replay and approval gate<br/>src/replay.ts"]
+		Store[("SQLite: conversations, task graph,<br/>Control, Ledger, and Replay documents")]
+		Harness --> Agent
+		Agent --> Replay
+		Harness -- "task graph changes" --> Control
+		Control -- "abort on budget" --> Harness
+		Harness <--> Store
+	end
+
+	Agent -- "model calls" --> OpenAI[("OpenAI")]
+	Agent -- "search" --> Exa[("Exa")]
+	Alarm(("Durable Object alarm")) -- "resume()" --> Harness
+	Session -- "WebSocket view updates" --> Browser
+```
+
+1. The browser opens a WebSocket to `/api/sessions/:id`, and the Worker forwards it to the session's Durable Object.
+2. A message starts a run. Each tool call and each subagent is a durable task with its own committed checkpoint.
+3. The budget guard watches the task graph and aborts the run when its usage crosses a budget.
+4. If the object is evicted or crashes, the alarm calls `resume()`. Safe tools rerun, and an interrupted `charge_credits` is reported as interrupted instead of running again.
+
+[SPEC.md](SPEC.md#how-the-system-works) has more diagrams for sign-in, kill scopes, the exactly-once charge, Fork Replay, and recovery.
+
 ## Run it locally
 
-You need Bun 1.4 or newer and an OpenAI API key. Tests run on Vitest (invoked through Bun) because the Cloudflare workers pool has no bun test equivalent.
+You need Bun 1.4 or newer and an OpenAI API key.
 
 ```sh
 bun install
 cp .dev.vars.example .dev.vars
 ```
 
-Add your key to `.dev.vars`:
+Set your keys in `.dev.vars`. Without an Exa key, set `SEARCH_BACKEND=corpus` so search uses the built-in corpus.
 
 ```dotenv
 OPENAI_API_KEY=your-key
+SEARCH_BACKEND=corpus
 ```
 
-Then start the Worker and React client together:
+Start the Worker and the React client, then open the URL that Vite prints:
 
 ```sh
 bun run dev
 ```
 
-Open the local URL printed by Vite, create a session, and send a message.
-
-### Local kill -9 demo
-
-The same resume guarantees hold outside Cloudflare. This script starts the agent under Bun over a file-backed store, kills it with `kill -9` in the middle of a tool call, then reopens the store in a fresh process and resumes:
+To see recovery outside Cloudflare, run the `kill -9` demo. It kills the agent during a tool call, then resumes it in a new process. `slow_search` reruns, and `charge_credits` is reported interrupted with one Ledger entry.
 
 ```sh
 OPENAI_API_KEY=... bun run demo:local-kill
 ```
 
-It runs two scenarios and prints the full transcript of each: a safe tool (`slow_search`) reruns and completes after the kill, and an unsafe tool (`charge_credits`) is reported interrupted, is never re-fired, and leaves exactly one Ledger entry.
-
-## Where to look
-
-The shortest path through the project is:
-
-- [`src/chat.ts`](src/chat.ts) defines the models, extensions, tools, and default agent.
-- [`src/session.ts`](src/session.ts) hosts the harness with Pi Durable's built-in Durable Object SQLite storage and connects it to Cloudflare's native hibernating WebSockets and alarms. Each socket watches one conversation's view (`Conversation.watch()`): the server sends its first value, then its changes as Chord operations, and pages older entries on request.
-- [`src/tools.ts`](src/tools.ts), [`src/schedule.ts`](src/schedule.ts), and [`src/search.ts`](src/search.ts) contain the example tools and tasks.
-- [`src/client/`](src/client/) is the React client. It applies the operations to each conversation's view, keeps the whole transcript with Pi Durable's `ConversationTranscript`, and renders the result: entries, and `pi.live` for the run, the streamed answer, tool progress, and failures.
-- [`test/`](test/) covers application flows including restart recovery, scheduling, forks, and inboxes. Pi Durable tests its built-in Cloudflare storage adapter inside a Durable Object itself.
-
-The code is the documentation for this integration. In particular, the tests are useful examples of restart behavior, scheduling, forks, and inboxes.
-
 ## Commands
 
 ```sh
-bun run dev     # local development
-bun run test    # test suite (Vitest, via bun run)
+bun run dev     # Worker and client in development
+bun run test    # Vitest suite, run through Bun
 bun run check   # formatting, types, build, and deploy dry run
 bun run build   # production build
-bun run preview # preview the production build locally
+bun run preview # serve the production build locally
 ```
+
+Tests always search the built-in corpus, so they run offline.
 
 ## Deploy
 
-Deployment runs in GitHub Actions (`.github/workflows/deploy.yml`), not from a local Wrangler: every push to `main` runs the checks and the test suite, then deploys. One-time setup, all in your own browser sessions:
+A push to `main` runs `.github/workflows/deploy.yml`. The workflow runs the check and the tests, then deploys with `wrangler deploy`.
 
-1. In the Cloudflare dashboard, create an account API token with the **Edit Cloudflare Workers** permission policy, scoped to your account, and note your account ID.
-2. In this repo's GitHub settings (Secrets and variables > Actions), add five repository secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `OPENAI_API_KEY` (your existing provider key), `CONTROL_TOKEN` (a password you choose for this app), and `EXA_API_KEY` (the key for the agent's web search).
-3. Push to `main`, or run the workflow manually from the Actions tab.
+Before the first deploy, add these repository secrets in **Settings > Secrets and variables > Actions**:
 
-The workflow uploads `OPENAI_API_KEY`, `CONTROL_TOKEN`, and `EXA_API_KEY` as Worker secrets in the same operation as the deploy (`wrangler deploy --secrets-file`), from a file that exists only in the runner's temp directory.
+- `CLOUDFLARE_API_TOKEN`, a token with the **Edit Cloudflare Workers** policy
+- `CLOUDFLARE_ACCOUNT_ID`
+- `OPENAI_API_KEY`
+- `CONTROL_TOKEN`, the password for this app
+- `EXA_API_KEY`
 
-The deployed Worker searches Exa (`SEARCH_BACKEND` is `exa` in `wrangler.jsonc`). Tests pin `SEARCH_BACKEND=corpus` so they run offline. For local `wrangler dev` without an Exa key, put `SEARCH_BACKEND=corpus` in `.dev.vars`; otherwise every search fails with a message naming the missing secret.
-
-Scripts send `Authorization: Bearer <CONTROL_TOKEN>` on session creation and on the session WebSocket. The browser UI prompts once, posts the token to `/api/auth`, and receives an `HttpOnly; Secure; SameSite=Strict` cookie holding a digest of the token, valid for 30 days; every tab and every WebSocket upgrade send it automatically, and the token never appears in a URL or in page storage. Rotating `CONTROL_TOKEN` signs every browser out. A deployment must always set CONTROL_TOKEN: without it the API is open, which is only acceptable for local development.
+The workflow uploads the last three as Worker secrets in the same step as the deploy. Always set `CONTROL_TOKEN` in a deployment, because without it the API is open. Rotating `CONTROL_TOKEN` signs every browser out.
 
 ## Further reading
 
 - [Pi Durable announcement](https://earendil.com/posts/pi-durable/)
 - [pi-durable package documentation](https://github.com/earendil-works/pi/tree/main/packages/durable)
-- [pi-durable examples](https://github.com/earendil-works/pi/tree/main/packages/durable/test/examples)
 - [Cloudflare Durable Objects](https://developers.cloudflare.com/durable-objects/)
