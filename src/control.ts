@@ -3,6 +3,7 @@ import {
   AssistantEntry,
   defineDoc,
   UsageDoc,
+  type CommitPublication,
   type ConversationId,
   type Harness,
   type TaskGraph,
@@ -57,18 +58,37 @@ export const ControlDoc = defineDoc<ControlState>({
   checkpointWhen: (value) => value.kills.length === 0 && Object.keys(value.runs).length === 0,
 });
 
+const CONTROL_VIEW_KINDS: ReadonlySet<string> = new Set([
+  "app.control",
+  "app.ledger",
+  "app.replay",
+  "app.crash",
+]);
+
+/** Whether a commit changed a document the Control view is built from. */
+export const changesControlView = (publication: CommitPublication): boolean =>
+  publication.changes.some(
+    (change) => change.type === "document" && CONTROL_VIEW_KINDS.has(change.record.kind),
+  );
+
 export async function readControl(harness: Harness, context: Context): Promise<ControlState> {
-  return harness.commit(async (tx) => {
-    const doc = await tx.doc(ControlDoc);
+  const doc = await harness.snapshot(ControlDoc, context);
+  if (doc === undefined) {
     return {
-      tokenBudget: doc.tokenBudget,
-      turnBudget: doc.turnBudget,
-      kills: doc.kills.map((kill) => ({ ...kill })),
-      runs: Object.fromEntries(
-        Object.entries(doc.runs).map(([key, run]) => [key, { ...run }]),
-      ) as Record<string, RunBaseline>,
+      tokenBudget: DEFAULT_TOKEN_BUDGET,
+      turnBudget: DEFAULT_TURN_BUDGET,
+      kills: [],
+      runs: {},
     };
-  }, context);
+  }
+  return {
+    tokenBudget: doc.tokenBudget,
+    turnBudget: doc.turnBudget,
+    kills: doc.kills.map((kill) => ({ ...kill })),
+    runs: Object.fromEntries(
+      Object.entries(doc.runs).map(([key, run]) => [key, { ...run }]),
+    ) as Record<string, RunBaseline>,
+  };
 }
 
 export async function setBudgets(

@@ -7,10 +7,16 @@ import {
   fauxToolCall,
   type FauxResponseStep,
 } from "@earendil-works/pi-ai";
-import { Harness, MemoryStorage, type TaskGraph } from "@earendil-works/pi-durable";
+import {
+  type CommitPublication,
+  Harness,
+  MemoryStorage,
+  type TaskGraph,
+} from "@earendil-works/pi-durable";
 import { describe, expect, it } from "vitest";
 import { createAgentHarnessOptions } from "../src/agent.ts";
-import { checkBudgets, kill, readControl, setBudgets } from "../src/control.ts";
+import { changesControlView, checkBudgets, kill, readControl, setBudgets } from "../src/control.ts";
+import { LedgerDoc } from "../src/tools.ts";
 
 const context = BACKGROUND_CONTEXT;
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -183,4 +189,30 @@ describe("control: kills and budgets (SPEC tests 1, 2, 8)", () => {
       await harness.close(context);
     }
   }, 60_000);
+});
+
+describe("control view freshness", () => {
+  it("counts a Ledger write as a Control view change, and a conversation setting as not", async () => {
+    const harness = await Harness.open(new MemoryStorage(), createAgentHarnessOptions(), context);
+    const published: CommitPublication[] = [];
+    harness.observeCommits({
+      advance: (publication) => published.push(publication),
+      end: () => {},
+    });
+    try {
+      const root = await harness.root(context);
+      published.length = 0;
+      await root.configure({ thinkingLevel: "low" }, context);
+      expect(published.some(changesControlView)).toBe(false);
+
+      published.length = 0;
+      await harness.commit(async (tx) => {
+        const ledger = await tx.doc(LedgerDoc);
+        ledger.entries.push({ taskId: "1", conversationId: 1, credits: 5, memo: "fresh", at: 0 });
+      }, context);
+      expect(published.some(changesControlView)).toBe(true);
+    } finally {
+      await harness.close(context);
+    }
+  });
 });

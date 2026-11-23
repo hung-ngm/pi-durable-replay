@@ -18,6 +18,7 @@ import { openDurableObjectSqliteStorage } from "@earendil-works/pi-durable/stora
 import { normalizeUsername } from "./identity.ts";
 import { createAgentHarnessOptions } from "./agent.ts";
 import {
+  changesControlView,
   checkBudgets,
   kill as killControl,
   readControl,
@@ -238,6 +239,7 @@ export class Session extends DurableObject<Env> {
         advance: (publication) => {
           this.#scheduleBudgetCheck();
           this.#scheduleCrashLoopCheck();
+          if (changesControlView(publication)) this.#scheduleSnapshotBroadcast();
           for (const change of publication.changes) {
             if (change.type !== "conversation" || change.value.owner === undefined) continue;
             this.#broadcast({
@@ -724,6 +726,30 @@ export class Session extends DurableObject<Env> {
     }
   }
 
+  #snapshotBroadcastRunning = false;
+  #snapshotBroadcastPending = false;
+
+  /** Send the session snapshot after a commit changed the Control view; coalesce bursts into one resend. */
+  #scheduleSnapshotBroadcast(): void {
+    if (this.#snapshotBroadcastRunning) {
+      this.#snapshotBroadcastPending = true;
+      return;
+    }
+    this.#snapshotBroadcastRunning = true;
+    void (async () => {
+      try {
+        do {
+          this.#snapshotBroadcastPending = false;
+          await this.#broadcastSessionSnapshot();
+        } while (this.#snapshotBroadcastPending);
+      } catch (error) {
+        reportError("Snapshot broadcast failed", error);
+      } finally {
+        this.#snapshotBroadcastRunning = false;
+      }
+    })();
+  }
+
   #budgetCheckRunning = false;
   #budgetCheckPending = false;
 
@@ -840,10 +866,9 @@ export class Session extends DurableObject<Env> {
 
   async #controlView(): Promise<ControlView> {
     const control = await readControl(this.#harness, BACKGROUND_CONTEXT);
-    const ledger = await this.#harness.commit(async (tx) => {
-      const doc = await tx.doc(LedgerDoc);
-      return doc.entries.map((entry) => ({ ...entry }));
-    }, BACKGROUND_CONTEXT);
+    const ledger = (
+      (await this.#harness.snapshot(LedgerDoc, BACKGROUND_CONTEXT))?.entries ?? []
+    ).map((entry) => ({ ...entry }));
     const conversations = await this.#sessionSnapshot();
     const replays: Record<string, ReplayState> = {};
     for (const conversation of conversations) {
