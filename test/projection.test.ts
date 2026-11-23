@@ -278,11 +278,11 @@ describe("conversation projection", () => {
   });
 });
 
-describe("Fork Replay approval on the blocked charge", () => {
-  const blockedCharge = (id: number, callId: string) => {
+describe("Fork Replay approval on the blocked loop_forever call", () => {
+  const blockedLoop = (id: number, callId: string) => {
     const message =
-      "Tool call blocked: charge_credits is blocked in this replay: conversation #1 already charged.";
-    const entry = toolResult(id, callId, "charge_credits", "");
+      "Tool call blocked: loop_forever is blocked in this replay: conversation #1 already ran loop_forever.";
+    const entry = toolResult(id, callId, "loop_forever", "");
     return {
       ...entry,
       model: [
@@ -304,18 +304,18 @@ describe("Fork Replay approval on the blocked charge", () => {
   const messages = messagesOf(
     show(
       initialSessionState,
-      viewOf([toolRequest(5, "call-9", "charge_credits"), blockedCharge(6, "call-9")]),
+      viewOf([toolRequest(5, "call-9", "loop_forever"), blockedLoop(6, "call-9")]),
     ),
   );
-  const chargeOf = (projected: typeof messages) =>
+  const loopOf = (projected: typeof messages) =>
     projected[0]?.content.find((part) => part.type === "tool-call");
 
   it("asks for approval on the blocked call, then reads approved once the replay records it", () => {
-    expect(chargeOf(withReplayApproval(messages, 7, replay))).toMatchObject({
+    expect(loopOf(withReplayApproval(messages, 7, replay))).toMatchObject({
       approval: { id: "replay:7", approved: undefined },
     });
     expect(
-      chargeOf(
+      loopOf(
         withReplayApproval(messages, 7, { ...replay, pendingUnsafeApproval: false, approvedAt: 9 }),
       ),
     ).toMatchObject({ approval: { id: "replay:7", approved: true } });

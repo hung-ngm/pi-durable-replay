@@ -117,7 +117,7 @@ export function ControlPanel({
               the blocked call.
             </p>
           ) : replay.approvedAt === undefined ? null : (
-            <p className="text-muted-foreground text-xs">Unsafe tools approved for this replay.</p>
+            <p className="text-muted-foreground text-xs">loop_forever approved for this replay.</p>
           )}
         </div>
       )}

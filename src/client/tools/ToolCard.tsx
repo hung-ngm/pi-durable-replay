@@ -33,12 +33,17 @@ interface ResearchDetails {
   readonly answers?: readonly { readonly angle: string; readonly conversationId: number }[];
 }
 
+interface LoopProgress {
+  readonly round: number;
+}
+
 const toolBodies: Record<string, Body> = {
   search: SearchBody,
   research: ResearchBody,
+  loop_forever: LoopBody,
 };
 
-const faultTools = new Set(["loop_forever"]);
+const unsafeTools = new Set(["loop_forever"]);
 
 function toolRowStatus(part: ToolCallPart): ToolRowStatus {
   if (part.approval !== undefined) return "blocked";
@@ -66,11 +71,10 @@ export function ToolCard({ part }: { readonly part: ToolCallPart }) {
   return (
     <ToolFallback
       toolName={part.toolName}
-      note={faultTools.has(part.toolName) ? "fault tool" : undefined}
+      note={unsafeTools.has(part.toolName) ? "unsafe" : undefined}
       status={toolRowStatus(part)}
     >
       <Body part={part} />
-      {part.approval === undefined ? null : <Approve part={part} />}
       {diagnostics === undefined || diagnostics.length === 0 ? null : (
         <Diagnostics diagnostics={diagnostics} />
       )}
@@ -164,12 +168,32 @@ function ResearchBody({ part }: { readonly part: ToolCallPart }) {
   );
 }
 
-function Approve({ part }: { readonly part: ToolCallPart }) {
+function LoopBody({ part }: { readonly part: ToolCallPart }) {
+  const { topic } = part.args as { readonly topic?: string };
+  const progress = detailsOf<LoopProgress>(part);
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-muted-foreground text-xs">
+        Topic: <span className="text-foreground">{topic ?? "none"}</span>
+      </p>
+      {progress?.round === undefined ? null : (
+        <p className="text-muted-foreground text-xs">
+          Subagent conversations recruited: {progress.round + 1}
+        </p>
+      )}
+      {part.approval === undefined ? null : <ApproveLoop part={part} />}
+    </div>
+  );
+}
+
+function ApproveLoop({ part }: { readonly part: ToolCallPart }) {
   const approved = part.approval?.approved === true;
   const [asked, setAsked] = useState(false);
   return (
     <div className="bg-muted/50 flex flex-col items-start gap-2 rounded-md p-3">
-      <p className="text-sm">This call needs your approval in this replay.</p>
+      <p className="text-sm">
+        The source conversation ran this loop. It runs here only with your approval.
+      </p>
       {approved ? (
         <p
           ref={asked ? (node) => node?.focus() : undefined}
@@ -178,7 +202,7 @@ function Approve({ part }: { readonly part: ToolCallPart }) {
           role="status"
         >
           <CheckIcon aria-hidden className="size-4" />
-          Approved. The next call in this conversation runs.
+          Approved. The next loop_forever call in this conversation runs.
         </p>
       ) : (
         <Button
@@ -188,7 +212,7 @@ function Approve({ part }: { readonly part: ToolCallPart }) {
             part.respondToApproval({ approved: true });
           }}
         >
-          Approve
+          Approve loop
         </Button>
       )}
     </div>

@@ -21,7 +21,7 @@ export type ReplayState = {
   forkEntryId: number;
   /** Tool results committed before the fork point, carried forward as history. */
   carried: CarriedToolResult[];
-  /** True when the source conversation charged and no approval is recorded yet. */
+  /** True when the source conversation called loop_forever and no approval is recorded yet. */
   pendingUnsafeApproval: boolean;
   approvedAt?: number;
 };
@@ -56,9 +56,10 @@ export type ForkReplayResult = {
  * Fork Replay: fork the source conversation at `entryId` (the entry before the
  * failure), and write the ReplayDoc naming the source, the fork entry, and every
  * tool result carried forward. Carried results are history in the fork, so the safe
- * tools behind them never run again. The approval gate arms from the ledger, not
- * from the carried results: a charge whose result was never committed, or sits
- * after the fork point, still happened, and the fork must not repeat it unasked.
+ * tools behind them never run again. The approval gate arms from every loop_forever
+ * call in the source, not only the carried ones: a call commits before its tool
+ * runs, so a loop whose call sits after the fork point still started, and the fork
+ * must not restart it unasked.
  */
 export async function replayFork(
   harness: Harness,
@@ -68,10 +69,19 @@ export async function replayFork(
 ): Promise<ForkReplayResult> {
   return harness.commit(async (tx) => {
     const carried: CarriedToolResult[] = [];
+    let pendingUnsafeApproval = false;
     let cursor;
     do {
       const page = await tx.scanEntries({ conversationId: sourceConversationId }, 100, cursor);
       for (const entry of page.items) {
+        for (const message of entry.model ?? []) {
+          if (message.role !== "assistant") continue;
+          if (
+            message.content.some((b) => b.type === "toolCall" && b.name === LOOP_FOREVER_TOOL_NAME)
+          ) {
+            pendingUnsafeApproval = true;
+          }
+        }
         if ((entry.id as number) > (entryId as number)) continue;
         if (!ToolResultEntry.is(entry)) continue;
         const message = entry.model?.[0];
@@ -86,8 +96,6 @@ export async function replayFork(
     const fork = await tx.forkConversation(sourceConversationId, entryId, {
       ownership: { kind: "ownerless" },
     });
-    // Disarmed until the gate is pointed at loop_forever (docs/plans/0002, unit 4).
-    const pendingUnsafeApproval = false;
     const doc = await tx.doc(ReplayDoc, fork.id);
     doc.sourceConversationId = sourceConversationId as number;
     doc.forkEntryId = entryId as number;
@@ -129,8 +137,8 @@ export async function approveUnsafe(
 
 /**
  * The approval gate: a beforeTool hook on every tool call. In a Fork Replay whose
- * source conversation charged, charge_credits is blocked until the operator approves
- * it (approveUnsafe). The approval is durable in the ReplayDoc, so a crash never asks
+ * source conversation called loop_forever, loop_forever is blocked until the operator
+ * approves it (approveUnsafe). The approval is durable in the ReplayDoc, so a crash never asks
  * twice; the block is the ask, and the blocked call is where it is answered.
  */
 export const unsafeGateHook = hook(ToolTask, {
@@ -141,7 +149,7 @@ export const unsafeGateHook = hook(ToolTask, {
     return {
       block:
         `${call.name} ${REPLAY_BLOCK_MARKER}: conversation #${replay.sourceConversationId} ` +
-        "already charged, so a charge here needs fresh approval. " +
+        "already ran loop_forever, so running it here needs fresh approval. " +
         "The operator can approve it on the blocked call.",
     };
   },
