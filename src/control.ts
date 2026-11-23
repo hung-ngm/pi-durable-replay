@@ -10,12 +10,11 @@ import {
   type TaskId,
 } from "@earendil-works/pi-durable";
 
-export type AbortScope = "run" | "tool" | "conversation" | "all";
 export type KillReason = "manual" | "budget";
 export type BudgetKind = "tokens" | "turns";
 
+/** One run kill, manual (Stop) or fired by a budget. */
 export type KillRecord = {
-  scope: AbortScope;
   reason: KillReason;
   /** Set when reason is "budget": which budget fired. */
   budget?: BudgetKind;
@@ -108,15 +107,15 @@ async function recordKill(harness: Harness, kill: KillRecord, context: Context):
 const LIVE_TASK_STATES = new Set(["pending", "running", "waiting", "sleeping", "completing"]);
 
 /**
- * Kill, by Abort Scope. The harness aborts a scope's owned tasks bottom-up, and each
- * owned task's own abort handling runs before its parent settles. Manual and budget
- * kills share this path and the same terminal state; only the recorded reason differs.
+ * Kill a run: its generation, or the conversation's live generation when only the
+ * conversation is named. The harness aborts the run's owned work bottom-up. Manual
+ * and budget kills share this path and the same terminal state; only the recorded
+ * reason differs.
  */
 export async function kill(
   harness: Harness,
   graph: TaskGraph,
   request: {
-    scope: AbortScope;
     conversationId?: ConversationId;
     taskId?: TaskId;
     reason: KillReason;
@@ -125,7 +124,6 @@ export async function kill(
   context: Context,
 ): Promise<KillRecord> {
   const record: KillRecord = {
-    scope: request.scope,
     reason: request.reason,
     ...(request.budget === undefined ? {} : { budget: request.budget }),
     ...(request.conversationId === undefined
@@ -136,49 +134,24 @@ export async function kill(
   };
   await recordKill(harness, record, context);
 
-  switch (request.scope) {
-    case "tool": {
-      if (request.taskId === undefined) throw new Error("A tool kill needs a taskId");
-      await harness.abortTask(request.taskId, context);
-      break;
-    }
-    case "run": {
-      if (request.taskId !== undefined) {
-        await harness.abortTask(request.taskId, context);
-        break;
-      }
-      if (request.conversationId === undefined)
-        throw new Error("A run kill needs a taskId or a conversationId");
-      const generation = Object.values(graph.tasks).find(
-        (node) =>
-          node.kind === "pi.generation" &&
-          node.conversationId === request.conversationId &&
-          LIVE_TASK_STATES.has(node.state.status),
-      );
-      if (generation !== undefined) {
-        await harness.abortTask(generation.id as TaskId, context);
-      } else {
-        const conversation = await harness.conversation(request.conversationId, context);
-        await conversation?.abort(context, { background: true });
-      }
-      break;
-    }
-    case "conversation": {
-      if (request.conversationId === undefined)
-        throw new Error("A conversation kill needs a conversationId");
-      const conversation = await harness.conversation(request.conversationId, context);
-      await conversation?.abort(context, { background: true });
-      break;
-    }
-    case "all": {
-      const conversations = await harness.commit((tx) => tx.scanConversations({}, 1_000), context);
-      for (const conversation of conversations.items) {
-        if (conversation.owner !== undefined) continue;
-        const handle = await harness.conversation(conversation.id, context);
-        await handle?.abort(context, { background: true });
-      }
-      break;
-    }
+  if (request.taskId !== undefined) {
+    await harness.abortTask(request.taskId, context);
+    return record;
+  }
+  if (request.conversationId === undefined) {
+    throw new Error("A run kill needs a taskId or a conversationId");
+  }
+  const generation = Object.values(graph.tasks).find(
+    (node) =>
+      node.kind === "pi.generation" &&
+      node.conversationId === request.conversationId &&
+      LIVE_TASK_STATES.has(node.state.status),
+  );
+  if (generation !== undefined) {
+    await harness.abortTask(generation.id as TaskId, context);
+  } else {
+    const conversation = await harness.conversation(request.conversationId, context);
+    await conversation?.abort(context, { background: true });
   }
   return record;
 }
@@ -307,7 +280,6 @@ export async function checkBudgets(
           harness,
           graph,
           {
-            scope: "run",
             conversationId: id,
             taskId: liveRuns.get(conversationId) as TaskId,
             reason: "budget",

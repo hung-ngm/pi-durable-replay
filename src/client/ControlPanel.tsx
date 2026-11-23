@@ -9,8 +9,6 @@ interface ControlPanelProps {
   readonly usage: UsageState | undefined;
   readonly activeConversationId: number | undefined;
   readonly onSetBudgets: (tokenBudget: number, turnBudget: number) => void;
-  readonly onAbortConversation: (conversationId: number) => void;
-  readonly onAbortSession: () => void;
   readonly onCrashNow: (conversationId: number) => void;
 }
 
@@ -30,8 +28,6 @@ export function ControlPanel({
   usage,
   activeConversationId,
   onSetBudgets,
-  onAbortConversation,
-  onAbortSession,
   onCrashNow,
 }: ControlPanelProps) {
   const [tokenBudget, setTokenBudget] = useState("");
@@ -99,7 +95,7 @@ export function ControlPanel({
 
       {lastKill === undefined ? null : (
         <p className="text-xs" role="status">
-          Last kill: {lastKill.scope} ({lastKill.reason}
+          Last kill: run ({lastKill.reason}
           {lastKill.budget === undefined ? "" : `: ${lastKill.budget} budget`}) at{" "}
           {new Date(lastKill.at).toLocaleTimeString()}
         </p>
@@ -141,29 +137,13 @@ export function ControlPanel({
           checkpoint.
         </p>
       </div>
-      <div className="flex flex-wrap gap-2">
-        <Button
-          variant="destructive"
-          size="sm"
-          disabled={activeConversationId === undefined}
-          onClick={() => {
-            if (activeConversationId !== undefined) onAbortConversation(activeConversationId);
-          }}
-        >
-          Kill conversation
-        </Button>
-        <Button variant="destructive" size="sm" onClick={onAbortSession}>
-          Kill all
-        </Button>
-      </div>
-
       {control === undefined || control.kills.length === 0 ? null : (
         <>
           <h3>Kills</h3>
           <ul className="text-muted-foreground flex flex-col gap-1 text-xs">
             {[...control.kills].reverse().map((kill, index) => (
               <li key={`${kill.at}-${index}`}>
-                {kill.scope} · {kill.reason}
+                run · {kill.reason}
                 {kill.budget === undefined ? "" : ` · ${kill.budget}`}
                 {kill.conversationId === undefined ? "" : ` · conversation #${kill.conversationId}`}
                 {kill.taskId === undefined ? "" : ` · task #${kill.taskId}`} ·{" "}

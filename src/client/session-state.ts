@@ -60,7 +60,6 @@ export type SessionAction =
 
 export const OPENS_RESULT_CONVERSATION: ReadonlySet<string> = new Set([
   "conversation.create",
-  "conversation.fork",
   "run.replayFork",
 ]);
 

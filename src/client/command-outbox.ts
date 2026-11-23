@@ -5,11 +5,8 @@ export type RetriableCommand = Extract<
   {
     readonly type:
       | "conversation.create"
-      | "conversation.fork"
       | "prompt.submit"
       | "task.abort"
-      | "conversation.abort"
-      | "session.abort"
       | "control.setBudgets"
       | "run.replayFork"
       | "run.approveUnsafe";

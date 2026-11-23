@@ -74,17 +74,17 @@ describe("control: kills and budgets (SPEC tests 1, 2, 8)", () => {
       const record = await kill(
         harness,
         graph(),
-        { scope: "run", conversationId: root.id, reason: "manual" },
+        { conversationId: root.id, reason: "manual" },
         context,
       );
-      expect(record).toMatchObject({ scope: "run", reason: "manual" });
+      expect(record).toMatchObject({ reason: "manual" });
 
       const settled = await submission.wait(context);
       expect(settled.status).not.toBe("done");
       await poll(() => (liveNodes(graph()).length === 0 ? true : undefined));
       const control = await readControl(harness, context);
       expect(control.kills).toHaveLength(1);
-      expect(control.kills[0]).toMatchObject({ scope: "run", reason: "manual" });
+      expect(control.kills[0]).toMatchObject({ reason: "manual" });
     } finally {
       await harness.close(context);
     }
@@ -111,7 +111,6 @@ describe("control: kills and budgets (SPEC tests 1, 2, 8)", () => {
       expect(budgetKill).toMatchObject({
         reason: "budget",
         budget: "turns",
-        scope: "run",
       });
 
       await poll(() => (liveNodes(graph()).length === 0 ? true : undefined), 30_000);
@@ -155,12 +154,7 @@ describe("control: kills and budgets (SPEC tests 1, 2, 8)", () => {
       await setBudgets(harness, { tokenBudget: 1, turnBudget: 1_000 }, context);
       await checkBudgets(harness, graph(), context);
       expect((await readControl(harness, context)).kills).toHaveLength(0);
-      await kill(
-        harness,
-        graph(),
-        { scope: "run", conversationId: root.id, reason: "manual" },
-        context,
-      );
+      await kill(harness, graph(), { conversationId: root.id, reason: "manual" }, context);
       await first.wait(context);
       await poll(() => (liveNodes(graph()).length === 0 ? true : undefined));
 

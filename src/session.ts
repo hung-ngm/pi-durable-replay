@@ -57,17 +57,10 @@ const reportError = (
 const HEARTBEAT_MS = 60_000;
 const CONVERSATION_PAGE_SIZE = 100;
 
-type ConversationCommandReceipt =
-  | {
-      command: "conversation.create";
-      conversationId: ConversationId;
-    }
-  | {
-      command: "conversation.fork";
-      conversationId: ConversationId;
-      parentConversationId: ConversationId;
-      entryId: EntryId;
-    };
+type ConversationCommandReceipt = {
+  command: "conversation.create";
+  conversationId: ConversationId;
+};
 
 const ConversationCommandReceipts = defineDocFamily<
   {
@@ -423,58 +416,13 @@ export class Session extends DurableObject<Env> {
         const conversationId = await this.#harness.commit(async (tx) => {
           const doc = await tx.doc(ConversationCommandReceipts, command.requestId, null);
           const existing = doc.receipt;
-          if (existing !== undefined) {
-            if (existing.command !== command.type) {
-              throw new Error(
-                `Request ${command.requestId} was already used for ${existing.command}`,
-              );
-            }
-            return existing.conversationId;
-          }
+          if (existing !== undefined) return existing.conversationId;
           const conversation = await tx.createConversation({ ownership: { kind: "ownerless" } });
           doc.receipt = {
             command: command.type,
             conversationId: conversation.id,
           };
           return conversation.id;
-        }, BACKGROUND_CONTEXT);
-        await this.#watchConversation(socket, conversationId);
-        await this.#broadcastSessionSnapshot();
-        this.#send(socket, {
-          type: "command.result",
-          command: command.type,
-          requestId: command.requestId,
-          ok: true,
-          conversationId,
-        });
-        return;
-      }
-      case "conversation.fork": {
-        const parentConversationId = command.conversationId as ConversationId;
-        const entryId = command.entryId as EntryId;
-        const conversationId = await this.#harness.commit(async (tx) => {
-          const doc = await tx.doc(ConversationCommandReceipts, command.requestId, null);
-          const existing = doc.receipt;
-          if (existing !== undefined) {
-            if (
-              existing.command !== command.type ||
-              existing.parentConversationId !== parentConversationId ||
-              existing.entryId !== entryId
-            ) {
-              throw new Error(`Request ${command.requestId} was already used for another command`);
-            }
-            return existing.conversationId;
-          }
-          const fork = await tx.forkConversation(parentConversationId, entryId, {
-            ownership: { kind: "ownerless" },
-          });
-          doc.receipt = {
-            command: command.type,
-            conversationId: fork.id,
-            parentConversationId,
-            entryId,
-          };
-          return fork.id;
         }, BACKGROUND_CONTEXT);
         await this.#watchConversation(socket, conversationId);
         await this.#broadcastSessionSnapshot();
@@ -522,48 +470,7 @@ export class Session extends DurableObject<Env> {
         await killControl(
           this.#harness,
           this.#activity.value,
-          {
-            scope: command.scope,
-            taskId: command.taskId as TaskId,
-            reason: "manual",
-          },
-          BACKGROUND_CONTEXT,
-        );
-        await this.#broadcastSessionSnapshot();
-        this.#send(socket, {
-          type: "command.result",
-          command: command.type,
-          requestId: command.requestId,
-          ok: true,
-        });
-        return;
-      }
-      case "conversation.abort": {
-        await killControl(
-          this.#harness,
-          this.#activity.value,
-          {
-            scope: "conversation",
-            conversationId: command.conversationId as ConversationId,
-            reason: "manual",
-          },
-          BACKGROUND_CONTEXT,
-        );
-        await this.#broadcastSessionSnapshot();
-        this.#send(socket, {
-          type: "command.result",
-          command: command.type,
-          requestId: command.requestId,
-          ok: true,
-          conversationId: command.conversationId,
-        });
-        return;
-      }
-      case "session.abort": {
-        await killControl(
-          this.#harness,
-          this.#activity.value,
-          { scope: "all", reason: "manual" },
+          { taskId: command.taskId as TaskId, reason: "manual" },
           BACKGROUND_CONTEXT,
         );
         await this.#broadcastSessionSnapshot();

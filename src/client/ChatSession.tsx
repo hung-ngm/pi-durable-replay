@@ -131,8 +131,6 @@ export function ChatSession({ sessionId, username }: ChatSessionProps) {
         usage={activeConversation?.usage}
         activeConversationId={activeConversationId}
         onSetBudgets={session.setBudgets}
-        onAbortConversation={session.abortConversation}
-        onAbortSession={session.abortSession}
         onCrashNow={session.crashNow}
       />
     </>
@@ -214,11 +212,6 @@ export function ChatSession({ sessionId, username }: ChatSessionProps) {
 
             <Thread
               conversation={activeConversation}
-              onFork={(entryId) => {
-                if (activeConversationId !== undefined) {
-                  session.forkConversation(activeConversationId, entryId);
-                }
-              }}
               onReplay={(entryId) => {
                 if (activeConversationId !== undefined) {
                   session.replayFork(activeConversationId, entryId);
@@ -238,7 +231,6 @@ export function ChatSession({ sessionId, username }: ChatSessionProps) {
             }
             graph={session.activity}
             activeConversationId={activeConversationId}
-            onAbortTask={session.abortTask}
             onClose={closeActivity}
             closeButtonRef={activityCloseRef}
             onOpenConversation={(conversationId) => {

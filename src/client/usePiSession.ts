@@ -50,13 +50,10 @@ export interface PiSession {
   replayFork(conversationId: number, entryId: number): void;
   crashNow(conversationId: number): void;
   approveUnsafe(conversationId: number): void;
-  abortTask(taskId: number, scope: "run" | "tool"): void;
-  abortConversation(conversationId: number): void;
-  abortSession(): void;
+  abortRun(taskId: number): void;
   setBudgets(tokenBudget: number, turnBudget: number): void;
   openConversation(conversationId: number): void;
   createConversation(): void;
-  forkConversation(conversationId: number, entryId: number): void;
   setTyping(conversationId: number, typing: boolean): void;
   submitPrompt(conversationId: number, content: string): Promise<boolean>;
   /** Loads the page of the transcript before the oldest entry loaded. */
@@ -307,18 +304,6 @@ export function usePiSession(
     sendRetriable({ type: "conversation.create", requestId: crypto.randomUUID() });
   }, [sendRetriable]);
 
-  const forkConversation = useCallback(
-    (conversationId: number, entryId: number) => {
-      sendRetriable({
-        type: "conversation.fork",
-        requestId: crypto.randomUUID(),
-        conversationId,
-        entryId,
-      });
-    },
-    [sendRetriable],
-  );
-
   const setTyping = useCallback((conversationId: number, typing: boolean) => {
     const socket = socketRef.current;
     if (socket === null || socket.readyState !== socket.OPEN) return;
@@ -384,23 +369,12 @@ export function usePiSession(
     [sendRetriable],
   );
 
-  const abortTask = useCallback(
-    (taskId: number, scope: "run" | "tool") => {
-      sendRetriable({ type: "task.abort", requestId: crypto.randomUUID(), taskId, scope });
+  const abortRun = useCallback(
+    (taskId: number) => {
+      sendRetriable({ type: "task.abort", requestId: crypto.randomUUID(), taskId });
     },
     [sendRetriable],
   );
-
-  const abortConversation = useCallback(
-    (conversationId: number) => {
-      sendRetriable({ type: "conversation.abort", requestId: crypto.randomUUID(), conversationId });
-    },
-    [sendRetriable],
-  );
-
-  const abortSession = useCallback(() => {
-    sendRetriable({ type: "session.abort", requestId: crypto.randomUUID() });
-  }, [sendRetriable]);
 
   const setBudgets = useCallback(
     (tokenBudget: number, turnBudget: number) => {
@@ -448,13 +422,10 @@ export function usePiSession(
     crashNow,
     replayFork,
     approveUnsafe,
-    abortTask,
-    abortConversation,
-    abortSession,
+    abortRun,
     setBudgets,
     openConversation,
     createConversation,
-    forkConversation,
     setTyping,
     submitPrompt,
     loadEarlier,

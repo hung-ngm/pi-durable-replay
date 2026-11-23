@@ -13,7 +13,6 @@ import {
   ArrowUpIcon,
   CheckIcon,
   CopyIcon,
-  GitForkIcon,
   LoaderIcon,
   RotateCcwIcon,
   SquareIcon,
@@ -45,7 +44,6 @@ type PartState = Parameters<
 
 interface ThreadProps {
   readonly conversation: ConversationSnapshot | undefined;
-  readonly onFork: (entryId: number) => void;
   readonly onReplay: (entryId: number) => void;
   readonly onFillGap: (gap: TranscriptGap) => void;
 }
@@ -54,7 +52,7 @@ const groupByTool = groupPartByType({ "tool-call": ["group-tool"] });
 
 const column = "mx-auto w-full max-w-[44rem] px-4";
 
-export function Thread({ conversation, onFork, onReplay, onFillGap }: ThreadProps) {
+export function Thread({ conversation, onReplay, onFillGap }: ThreadProps) {
   return (
     <ThreadPrimitive.Root className="bg-background flex min-h-0 flex-col">
       <ThreadPrimitive.Viewport
@@ -72,8 +70,7 @@ export function Thread({ conversation, onFork, onReplay, onFillGap }: ThreadProp
               <div className="fade-in animate-in my-auto py-8 text-center duration-300 motion-reduce:animate-none">
                 <p className="m-0 text-2xl font-medium tracking-tight">How can I help you today?</p>
                 <p className="text-muted-foreground m-0 mt-2 text-sm">
-                  Send a message to begin. You can fork the conversation from any user or assistant
-                  message.
+                  Send a message to begin. Any answer that used tools can start a Fork Replay.
                 </p>
               </div>
             </ThreadPrimitive.Empty>
@@ -87,7 +84,7 @@ export function Thread({ conversation, onFork, onReplay, onFillGap }: ThreadProp
             <ThreadPrimitive.Messages>
               {() => (
                 <li>
-                  <Message onFork={onFork} onReplay={onReplay} onFillGap={onFillGap} />
+                  <Message onReplay={onReplay} onFillGap={onFillGap} />
                 </li>
               )}
             </ThreadPrimitive.Messages>
@@ -207,7 +204,7 @@ const kindLabel: Record<MessageKind, string> = {
 const entrance =
   "fade-in slide-in-from-bottom-1 animate-in duration-150 motion-reduce:animate-none";
 
-function Message({ onFork, onReplay, onFillGap }: Omit<ThreadProps, "conversation">) {
+function Message({ onReplay, onFillGap }: Omit<ThreadProps, "conversation">) {
   const id = useAuiState((s) => s.message.id);
   const role = useAuiState((s) => s.message.role);
   const createdAt = useAuiState((s) => s.message.createdAt);
@@ -240,7 +237,7 @@ function Message({ onFork, onReplay, onFillGap }: Omit<ThreadProps, "conversatio
   );
   if (kind === "gap") return <div className="flex justify-center">{parts}</div>;
 
-  const forkable = entryId !== undefined && (kind === "user" || kind === "assistant");
+  const actionable = entryId !== undefined && (kind === "user" || kind === "assistant");
   const heading = (
     <span className="sr-only" title={entryId === undefined ? undefined : `Entry (id: ${entryId})`}>
       {kindLabel[kind]}
@@ -249,9 +246,8 @@ function Message({ onFork, onReplay, onFillGap }: Omit<ThreadProps, "conversatio
   const footer = (
     <MessageFooter align={kind === "user" ? "end" : "start"}>
       {createdAt === undefined || kind === "failure" ? null : <MessageTime timestamp={createdAt} />}
-      {forkable ? (
+      {actionable ? (
         <MessageActions
-          onFork={() => onFork(entryId)}
           onReplay={kind === "assistant" && hasToolCalls ? () => onReplay(entryId) : undefined}
         />
       ) : null}
@@ -323,13 +319,7 @@ function MessageFooter({
   );
 }
 
-function MessageActions({
-  onFork,
-  onReplay,
-}: {
-  readonly onFork: () => void;
-  readonly onReplay: (() => void) | undefined;
-}) {
+function MessageActions({ onReplay }: { readonly onReplay: (() => void) | undefined }) {
   return (
     <ActionBarPrimitive.Root autohide="never" hideWhenRunning className="-ms-1 flex gap-1">
       <ActionBarPrimitive.Copy asChild>
@@ -342,9 +332,6 @@ function MessageActions({
           </AuiIf>
         </TooltipIconButton>
       </ActionBarPrimitive.Copy>
-      <TooltipIconButton tooltip="Fork" aria-label="Fork from this entry" onClick={onFork}>
-        <GitForkIcon />
-      </TooltipIconButton>
       {onReplay === undefined ? null : (
         <TooltipIconButton
           tooltip="Fork Replay: carry completed tool results forward; unsafe tools need fresh approval"

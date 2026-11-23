@@ -57,7 +57,7 @@ export function useSessionRuntime(
       if (approved && conversationId !== undefined) session.approveUnsafe(conversationId);
     },
     onCancel: async () => {
-      if (snapshot?.runTaskId !== undefined) session.abortTask(snapshot.runTaskId, "run");
+      if (snapshot?.runTaskId !== undefined) session.abortRun(snapshot.runTaskId);
     },
     adapters: {
       threadList: {

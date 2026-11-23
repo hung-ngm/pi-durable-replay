@@ -96,32 +96,16 @@ export type ClientCommand =
       readonly requestId: string;
     }
   | {
-      readonly type: "conversation.fork";
-      readonly requestId: string;
-      readonly conversationId: number;
-      readonly entryId: number;
-    }
-  | {
       readonly type: "prompt.submit";
       readonly requestId: string;
       readonly conversationId: number;
       readonly content: string;
     }
   | {
-      /** Kill one task: a tool call (scope "tool") or a run's generation (scope "run"). */
+      /** Kill a run: its generation task and everything the run owns. */
       readonly type: "task.abort";
       readonly requestId: string;
       readonly taskId: number;
-      readonly scope: "run" | "tool";
-    }
-  | {
-      readonly type: "conversation.abort";
-      readonly requestId: string;
-      readonly conversationId: number;
-    }
-  | {
-      readonly type: "session.abort";
-      readonly requestId: string;
     }
   | {
       /** Fork Replay: fork at entryId and write a ReplayDoc on the new conversation. */
@@ -261,11 +245,8 @@ const commandTypes = new Set<ClientCommandType>([
   "conversation.open",
   "conversation.entries",
   "conversation.create",
-  "conversation.fork",
   "prompt.submit",
   "task.abort",
-  "conversation.abort",
-  "session.abort",
   "control.setBudgets",
   "run.replayFork",
   "run.approveUnsafe",
@@ -435,25 +416,8 @@ export function parseClientCommand(message: string): ClientCommand {
       };
     case "conversation.create":
       return { type: value.type, requestId };
-    case "session.abort":
-      return { type: value.type, requestId };
-    case "task.abort": {
-      if (value.scope !== "run" && value.scope !== "tool") {
-        throw new InvalidClientCommand("scope must be run or tool");
-      }
-      return {
-        type: value.type,
-        requestId,
-        taskId: requireId(value.taskId, "taskId"),
-        scope: value.scope,
-      };
-    }
-    case "conversation.abort":
-      return {
-        type: value.type,
-        requestId,
-        conversationId: requireId(value.conversationId, "conversationId"),
-      };
+    case "task.abort":
+      return { type: value.type, requestId, taskId: requireId(value.taskId, "taskId") };
     case "run.replayFork":
       return {
         type: value.type,
@@ -487,13 +451,6 @@ export function parseClientCommand(message: string): ClientCommand {
         turnBudget: budget("turnBudget", value.turnBudget),
       };
     }
-    case "conversation.fork":
-      return {
-        type: value.type,
-        requestId,
-        conversationId: requireId(value.conversationId, "conversationId"),
-        entryId: requireId(value.entryId, "entryId"),
-      };
     case "prompt.submit": {
       if (typeof value.content !== "string" || value.content.trim().length === 0) {
         throw new InvalidClientCommand("content must contain text");
