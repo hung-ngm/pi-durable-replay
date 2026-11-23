@@ -18,6 +18,7 @@ import {
   ROOT_CONVERSATION_ID,
   type ClientCommand,
   type ConnectionStatus,
+  type ControlView,
   type ConversationSummary,
 } from "../protocol.ts";
 import { CommandOutbox, type RetriableCommand } from "./command-outbox.ts";
@@ -44,7 +45,12 @@ export interface PiSession {
   readonly activeConversationId: number | undefined;
   readonly activeConversation: ConversationSnapshot | undefined;
   readonly activity: TaskGraph | undefined;
+  readonly control: ControlView | undefined;
   readonly error: string | undefined;
+  abortTask(taskId: number, scope: "run" | "tool"): void;
+  abortConversation(conversationId: number): void;
+  abortSession(): void;
+  setBudgets(tokenBudget: number, turnBudget: number): void;
   openConversation(conversationId: number): void;
   createConversation(): void;
   forkConversation(conversationId: number, entryId: number): void;
@@ -347,6 +353,36 @@ export function usePiSession(
     [outbox, sendRetriable],
   );
 
+  const abortTask = useCallback(
+    (taskId: number, scope: "run" | "tool") => {
+      sendRetriable({ type: "task.abort", requestId: crypto.randomUUID(), taskId, scope });
+    },
+    [sendRetriable],
+  );
+
+  const abortConversation = useCallback(
+    (conversationId: number) => {
+      sendRetriable({ type: "conversation.abort", requestId: crypto.randomUUID(), conversationId });
+    },
+    [sendRetriable],
+  );
+
+  const abortSession = useCallback(() => {
+    sendRetriable({ type: "session.abort", requestId: crypto.randomUUID() });
+  }, [sendRetriable]);
+
+  const setBudgets = useCallback(
+    (tokenBudget: number, turnBudget: number) => {
+      sendRetriable({
+        type: "control.setBudgets",
+        requestId: crypto.randomUUID(),
+        tokenBudget,
+        turnBudget,
+      });
+    },
+    [sendRetriable],
+  );
+
   const loadEarlier = useCallback((conversationId: number) => {
     const transcript = transcriptsRef.current.get(conversationId);
     if (transcript === undefined) return;
@@ -376,7 +412,12 @@ export function usePiSession(
     activeConversationId: state.activeConversationId,
     activeConversation,
     activity: state.activity,
+    control: state.control,
     error: state.error,
+    abortTask,
+    abortConversation,
+    abortSession,
+    setBudgets,
     openConversation,
     createConversation,
     forkConversation,

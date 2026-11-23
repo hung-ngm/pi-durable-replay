@@ -18,6 +18,7 @@ import {
   ROOT_CONVERSATION_ID,
   queuedInputs,
   type ConnectionStatus,
+  type ControlView,
   type ConversationSummary,
   type QueuedInput,
   type ServerEvent,
@@ -108,6 +109,7 @@ export interface SessionState {
   readonly activeConversationId?: number;
   readonly snapshots: Readonly<Record<number, ConversationSnapshot>>;
   readonly activity?: TaskGraph;
+  readonly control?: ControlView;
   readonly error?: string;
 }
 
@@ -164,6 +166,7 @@ function reduceServerEvent(state: SessionState, event: ServerEvent): SessionStat
         conversations,
         activeConversationId,
         ...(event.session.activity === undefined ? {} : { activity: event.session.activity }),
+        ...(event.session.control === undefined ? {} : { control: event.session.control }),
       };
     }
     case "conversation.created": {

@@ -15,6 +15,7 @@ import {
 } from "../protocol.ts";
 import type { ConversationSnapshot } from "./session-state.ts";
 import { ActivityPanel } from "./ActivityPanel.tsx";
+import { ControlPanel } from "./ControlPanel.tsx";
 import { MessageText, TranscriptList } from "./Transcript.tsx";
 import { usePiSession } from "./usePiSession.ts";
 
@@ -257,7 +258,7 @@ export function ChatSession({ sessionId, username }: ChatSessionProps) {
       <aside className="session-sidebar">
         <header className="session-header">
           <a className="product-link" href="/">
-            pi-durable
+            pi-durable-replay
           </a>
           <h1>Session</h1>
           <p className="participant-name">
@@ -301,6 +302,15 @@ export function ChatSession({ sessionId, username }: ChatSessionProps) {
             )}
           </div>
         </nav>
+
+        <ControlPanel
+          control={session.control}
+          usage={activeConversation?.usage}
+          activeConversationId={activeConversationId}
+          onSetBudgets={session.setBudgets}
+          onAbortConversation={session.abortConversation}
+          onAbortSession={session.abortSession}
+        />
       </aside>
 
       <main className="conversation-view">
@@ -459,6 +469,7 @@ export function ChatSession({ sessionId, username }: ChatSessionProps) {
       <ActivityPanel
         graph={session.activity}
         activeConversationId={activeConversationId}
+        onAbortTask={session.abortTask}
         onClose={closeActivity}
         closeButtonRef={activityCloseRef}
         onOpenConversation={(conversationId) => {

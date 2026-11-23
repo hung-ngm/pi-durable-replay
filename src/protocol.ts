@@ -1,4 +1,7 @@
 import { assertValidOp, type Op } from "@earendil-works/chord/delta";
+import type { KillRecord } from "./control.ts";
+import type { LedgerEntry } from "./tools.ts";
+
 import type {
   BlockedReason,
   ConversationView,
@@ -100,8 +103,38 @@ export type ClientCommand =
       readonly requestId: string;
       readonly conversationId: number;
       readonly content: string;
+    }
+  | {
+      /** Kill one task: a tool call (scope "tool") or a run's generation (scope "run"). */
+      readonly type: "task.abort";
+      readonly requestId: string;
+      readonly taskId: number;
+      readonly scope: "run" | "tool";
+    }
+  | {
+      readonly type: "conversation.abort";
+      readonly requestId: string;
+      readonly conversationId: number;
+    }
+  | {
+      readonly type: "session.abort";
+      readonly requestId: string;
+    }
+  | {
+      readonly type: "control.setBudgets";
+      readonly requestId: string;
+      readonly tokenBudget: number;
+      readonly turnBudget: number;
     };
 export type ClientCommandType = Exclude<ClientCommand["type"], "presence.typing">;
+
+/** Control state as the client sees it: budgets, the kill log, and the ledger. */
+export interface ControlView {
+  readonly tokenBudget: number;
+  readonly turnBudget: number;
+  readonly kills: readonly KillRecord[];
+  readonly ledger: readonly LedgerEntry[];
+}
 
 export type CommandResult =
   | {
@@ -131,6 +164,7 @@ export type ServerEvent =
       readonly session: {
         readonly conversations: readonly ConversationSummary[];
         readonly activity?: TaskGraph;
+        readonly control?: ControlView;
       };
     }
   | {
@@ -206,6 +240,10 @@ const commandTypes = new Set<ClientCommandType>([
   "conversation.create",
   "conversation.fork",
   "prompt.submit",
+  "task.abort",
+  "conversation.abort",
+  "session.abort",
+  "control.setBudgets",
 ]);
 
 const requireCommandType = (value: unknown): ClientCommandType => {
@@ -371,6 +409,39 @@ export function parseClientCommand(message: string): ClientCommand {
       };
     case "conversation.create":
       return { type: value.type, requestId };
+    case "session.abort":
+      return { type: value.type, requestId };
+    case "task.abort": {
+      if (value.scope !== "run" && value.scope !== "tool") {
+        throw new InvalidClientCommand("scope must be run or tool");
+      }
+      return {
+        type: value.type,
+        requestId,
+        taskId: requireId(value.taskId, "taskId"),
+        scope: value.scope,
+      };
+    }
+    case "conversation.abort":
+      return {
+        type: value.type,
+        requestId,
+        conversationId: requireId(value.conversationId, "conversationId"),
+      };
+    case "control.setBudgets": {
+      const budget = (name: string, v: unknown): number => {
+        if (typeof v !== "number" || !Number.isSafeInteger(v) || v < 1 || v > 100_000_000) {
+          throw new InvalidClientCommand(`${name} must be an integer from 1 to 100000000`);
+        }
+        return v;
+      };
+      return {
+        type: value.type,
+        requestId,
+        tokenBudget: budget("tokenBudget", value.tokenBudget),
+        turnBudget: budget("turnBudget", value.turnBudget),
+      };
+    }
     case "conversation.fork":
       return {
         type: value.type,
@@ -421,6 +492,24 @@ export function parseClientCommand(message: string): ClientCommand {
   }
 }
 
+function parseControlView(value: unknown): ControlView {
+  if (
+    !isRecord(value) ||
+    typeof value.tokenBudget !== "number" ||
+    typeof value.turnBudget !== "number" ||
+    !Array.isArray(value.kills) ||
+    !Array.isArray(value.ledger)
+  ) {
+    throw new Error("Session control payload is invalid");
+  }
+  return {
+    tokenBudget: value.tokenBudget,
+    turnBudget: value.turnBudget,
+    kills: value.kills as KillRecord[],
+    ledger: value.ledger as LedgerEntry[],
+  };
+}
+
 /** Validate the application envelope. View payloads remain owned by pi-durable's typed protocol. */
 export function parseServerEventEnvelope(message: string): ServerEvent {
   const value: unknown = JSON.parse(message);
@@ -441,6 +530,9 @@ export function parseServerEventEnvelope(message: string): ServerEvent {
           ...(value.session.activity === undefined
             ? {}
             : { activity: parseTaskGraph(value.session.activity) }),
+          ...(value.session.control === undefined
+            ? {}
+            : { control: parseControlView(value.session.control) }),
         },
       };
     }

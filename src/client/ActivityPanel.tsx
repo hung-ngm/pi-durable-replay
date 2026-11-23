@@ -7,6 +7,8 @@ interface ActivityPanelProps {
   readonly onClose: () => void;
   readonly closeButtonRef?: Ref<HTMLButtonElement>;
   readonly onOpenConversation: (conversationId: number) => void;
+  /** Kill one task: scope "run" for a generation, "tool" for anything else. */
+  readonly onAbortTask?: (taskId: number, scope: "run" | "tool") => void;
 }
 
 const blockedReasons: Record<BlockedReason, string> = {
@@ -39,6 +41,7 @@ export function ActivityPanel({
   onClose,
   closeButtonRef,
   onOpenConversation,
+  onAbortTask,
 }: ActivityPanelProps) {
   const nodes = Object.values(graph?.tasks ?? {}).sort((left, right) => left.id - right.id);
   const nodesById = new Map(nodes.map((node) => [node.id, node]));
@@ -88,6 +91,16 @@ export function ActivityPanel({
             <span>#{node.id}</span>
           </header>
           <p className="activity-task-status">{taskStatus(node)}</p>
+          {onAbortTask === undefined || node.abortRequested ? null : (
+            <p className="activity-task-actions">
+              <button
+                type="button"
+                onClick={() => onAbortTask(node.id, node.kind === "pi.generation" ? "run" : "tool")}
+              >
+                {node.kind === "pi.generation" ? "Kill run" : "Kill task"}
+              </button>
+            </p>
+          )}
           {node.blocked === undefined ? null : (
             <p className="activity-task-blocked">{blockedReasons[node.blocked]}</p>
           )}

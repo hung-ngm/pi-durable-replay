@@ -10,6 +10,7 @@ import {
   type EntryId,
   Harness,
   type TaskGraph,
+  type TaskId,
   type Wake,
   type WatchHandle,
 } from "@earendil-works/pi-durable";
@@ -17,10 +18,18 @@ import { openDurableObjectSqliteStorage } from "@earendil-works/pi-durable/stora
 import { normalizeUsername } from "./identity.ts";
 import { createAgentHarnessOptions } from "./agent.ts";
 import {
+  checkBudgets,
+  kill as killControl,
+  readControl,
+  setBudgets as setControlBudgets,
+} from "./control.ts";
+import { LedgerDoc } from "./tools.ts";
+import {
   InvalidClientCommand,
   MAX_CLIENT_FRAME_CHARACTERS,
   parseClientCommand,
   type ClientCommand,
+  type ControlView,
   type ConversationSummary,
   type ServerEvent,
 } from "./protocol.ts";
@@ -199,13 +208,16 @@ export class Session extends DurableObject<Env> {
       activity = await harness.watchTaskGraph(BACKGROUND_CONTEXT);
       this.#activity = activity;
       activity.start(async (call) => {
-        if (call.kind === "value")
+        if (call.kind === "value") {
           this.#broadcast({ type: "session.activity", activity: call.value });
+          this.#scheduleBudgetCheck();
+        }
       });
       // Subagents are created by background tool tasks, not client commands.
       // Notify connected clients when their conversation records are committed.
       harness.observeCommits({
         advance: (publication) => {
+          this.#scheduleBudgetCheck();
           for (const change of publication.changes) {
             if (change.type !== "conversation" || change.value.owner === undefined) continue;
             this.#broadcast({
@@ -504,7 +516,104 @@ export class Session extends DurableObject<Env> {
         });
         return;
       }
+      case "task.abort": {
+        await killControl(
+          this.#harness,
+          this.#activity.value,
+          {
+            scope: command.scope,
+            taskId: command.taskId as TaskId,
+            reason: "manual",
+          },
+          BACKGROUND_CONTEXT,
+        );
+        await this.#broadcastSessionSnapshot();
+        this.#send(socket, {
+          type: "command.result",
+          command: command.type,
+          requestId: command.requestId,
+          ok: true,
+        });
+        return;
+      }
+      case "conversation.abort": {
+        await killControl(
+          this.#harness,
+          this.#activity.value,
+          {
+            scope: "conversation",
+            conversationId: command.conversationId as ConversationId,
+            reason: "manual",
+          },
+          BACKGROUND_CONTEXT,
+        );
+        await this.#broadcastSessionSnapshot();
+        this.#send(socket, {
+          type: "command.result",
+          command: command.type,
+          requestId: command.requestId,
+          ok: true,
+          conversationId: command.conversationId,
+        });
+        return;
+      }
+      case "session.abort": {
+        await killControl(
+          this.#harness,
+          this.#activity.value,
+          { scope: "all", reason: "manual" },
+          BACKGROUND_CONTEXT,
+        );
+        await this.#broadcastSessionSnapshot();
+        this.#send(socket, {
+          type: "command.result",
+          command: command.type,
+          requestId: command.requestId,
+          ok: true,
+        });
+        return;
+      }
+      case "control.setBudgets": {
+        await setControlBudgets(
+          this.#harness,
+          { tokenBudget: command.tokenBudget, turnBudget: command.turnBudget },
+          BACKGROUND_CONTEXT,
+        );
+        await this.#broadcastSessionSnapshot();
+        this.#send(socket, {
+          type: "command.result",
+          command: command.type,
+          requestId: command.requestId,
+          ok: true,
+        });
+        return;
+      }
     }
+  }
+
+  #budgetCheckRunning = false;
+  #budgetCheckPending = false;
+
+  /** Run the budget guard off the commit path; coalesce bursts into one recheck. */
+  #scheduleBudgetCheck(): void {
+    if (this.#budgetCheckRunning) {
+      this.#budgetCheckPending = true;
+      return;
+    }
+    this.#budgetCheckRunning = true;
+    void (async () => {
+      try {
+        do {
+          this.#budgetCheckPending = false;
+          const kills = await checkBudgets(this.#harness, this.#activity.value, BACKGROUND_CONTEXT);
+          if (kills.length > 0) await this.#broadcastSessionSnapshot();
+        } while (this.#budgetCheckPending);
+      } catch (error) {
+        reportError("Budget check failed", error);
+      } finally {
+        this.#budgetCheckRunning = false;
+      }
+    })();
   }
 
   async #requireConversation(id: ConversationId): Promise<Conversation> {
@@ -516,15 +625,37 @@ export class Session extends DurableObject<Env> {
   async #sendSessionSnapshot(socket: WebSocket): Promise<void> {
     this.#send(socket, {
       type: "session.snapshot",
-      session: { conversations: await this.#sessionSnapshot(), activity: this.#activity.value },
+      session: {
+        conversations: await this.#sessionSnapshot(),
+        activity: this.#activity.value,
+        control: await this.#controlView(),
+      },
     });
   }
 
   async #broadcastSessionSnapshot(): Promise<void> {
     this.#broadcast({
       type: "session.snapshot",
-      session: { conversations: await this.#sessionSnapshot(), activity: this.#activity.value },
+      session: {
+        conversations: await this.#sessionSnapshot(),
+        activity: this.#activity.value,
+        control: await this.#controlView(),
+      },
     });
+  }
+
+  async #controlView(): Promise<ControlView> {
+    const control = await readControl(this.#harness, BACKGROUND_CONTEXT);
+    const ledger = await this.#harness.commit(async (tx) => {
+      const doc = await tx.doc(LedgerDoc);
+      return doc.entries.map((entry) => ({ ...entry }));
+    }, BACKGROUND_CONTEXT);
+    return {
+      tokenBudget: control.tokenBudget,
+      turnBudget: control.turnBudget,
+      kills: control.kills,
+      ledger,
+    };
   }
 
   #sessionSnapshot(): Promise<readonly ConversationSummary[]> {

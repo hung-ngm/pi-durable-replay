@@ -438,7 +438,11 @@ describe("chat application", () => {
     }>();
     expect(session).toEqual({
       type: "session.snapshot",
-      session: { conversations: [{ id: 1 }], activity: { tasks: {} } },
+      session: {
+        conversations: [{ id: 1 }],
+        activity: { tasks: {} },
+        control: { tokenBudget: 100_000, turnBudget: 30, kills: [], ledger: [] },
+      },
     });
 
     await expect(messages.next()).resolves.toMatchObject({
