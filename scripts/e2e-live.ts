@@ -37,7 +37,10 @@ const unauthorized = await fetch(`${baseUrl}/api/sessions/${sessionId}`, {
 });
 console.log("socket without token ->", unauthorized.status, "(expect 401)");
 
-const ws = new WebSocket(`${wsBase}/api/sessions/${sessionId}?token=${controlToken}`);
+// Bun's WebSocket accepts headers; browsers use the sign-in cookie instead.
+const ws = new WebSocket(`${wsBase}/api/sessions/${sessionId}`, {
+  headers: { Authorization: `Bearer ${controlToken}` },
+} as unknown as string[]);
 const seen = {
   ledger: 0,
   subagents: new Set<number>(),

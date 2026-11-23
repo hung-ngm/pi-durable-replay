@@ -1,6 +1,6 @@
-import { type SubmitEvent, useState } from "react";
+import { type ReactNode, type SubmitEvent, useEffect, useState } from "react";
 import { ChatSession } from "./ChatSession.tsx";
-import { controlToken } from "./control-token.ts";
+import { ensureSignedIn } from "./control-token.ts";
 
 /** Single-user product (SPEC Q8): one operator, no accounts, no join flow. */
 export const OPERATOR_USERNAME = "operator";
@@ -14,7 +14,11 @@ export function App() {
   const match = sessionRoute.exec(pathname);
   if (match !== null && match[1].length > 0) {
     // Keep the session ID as the opaque encoded path segment PartySocket will reuse.
-    return <ChatSession sessionId={match[1]} username={OPERATOR_USERNAME} />;
+    return (
+      <SignedIn>
+        <ChatSession sessionId={match[1]} username={OPERATOR_USERNAME} />
+      </SignedIn>
+    );
   }
 
   return (
@@ -23,6 +27,27 @@ export function App() {
       <p>
         <a href="/">Return to the landing page</a>
       </p>
+    </main>
+  );
+}
+
+/** Holds the session view until the browser is signed in, so its socket opens authorized. */
+function SignedIn({ children }: { readonly children: ReactNode }) {
+  const [state, setState] = useState<"checking" | "ready" | "failed">("checking");
+  useEffect(() => {
+    ensureSignedIn().then(
+      () => setState("ready"),
+      () => setState("failed"),
+    );
+  }, []);
+  if (state === "ready") return children;
+  if (state === "checking") return <main aria-busy="true" />;
+  return (
+    <main>
+      <p role="alert">A control token is required to open this session.</p>
+      <button type="button" onClick={() => window.location.reload()}>
+        Sign in
+      </button>
     </main>
   );
 }
@@ -36,10 +61,8 @@ function LandingPage() {
     setCreating(true);
     setError(undefined);
     try {
-      const response = await fetch("/api/sessions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${controlToken()}` },
-      });
+      await ensureSignedIn();
+      const response = await fetch("/api/sessions", { method: "POST" });
       if (!response.ok) throw new Error(`Session creation failed (${response.status})`);
       const result = (await response.json()) as { readonly url?: unknown };
       if (typeof result.url !== "string")

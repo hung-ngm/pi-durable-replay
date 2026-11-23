@@ -81,7 +81,7 @@ Deployment runs in GitHub Actions (`.github/workflows/deploy.yml`), not from a l
 
 The workflow uploads `OPENAI_API_KEY` and `CONTROL_TOKEN` as Worker secrets in the same operation as the deploy (`wrangler deploy --secrets-file`), from a file that exists only in the runner's temp directory.
 
-The API requires `Authorization: Bearer <CONTROL_TOKEN>` on session creation and the same token as a `token` query parameter on the session WebSocket. The browser UI prompts for it once and keeps it in session storage only. A deployment must always set CONTROL_TOKEN: without it the API is open, which is only acceptable for local development.
+Scripts send `Authorization: Bearer <CONTROL_TOKEN>` on session creation and on the session WebSocket. The browser UI prompts once, posts the token to `/api/auth`, and receives an `HttpOnly; Secure; SameSite=Strict` cookie holding a digest of the token, valid for 30 days; every tab and every WebSocket upgrade send it automatically, and the token never appears in a URL or in page storage. Rotating `CONTROL_TOKEN` signs every browser out. A deployment must always set CONTROL_TOKEN: without it the API is open, which is only acceptable for local development.
 
 ## Further reading
 
