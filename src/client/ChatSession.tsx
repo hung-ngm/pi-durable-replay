@@ -212,12 +212,8 @@ export function ChatSession({ sessionId, username }: ChatSessionProps) {
     if (autoScrollingRef.current) stopAutoScroll();
   };
 
-  const submitWithKeyboardShortcut = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (
-      event.key !== "Enter" ||
-      (!event.metaKey && !event.ctrlKey) ||
-      event.nativeEvent.isComposing
-    ) {
+  const submitOnEnter = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
+    if (event.key !== "Enter" || event.shiftKey || event.altKey || event.nativeEvent.isComposing) {
       return;
     }
     event.preventDefault();
@@ -454,10 +450,10 @@ export function ChatSession({ sessionId, username }: ChatSessionProps) {
             rows={3}
             maxLength={MAX_PROMPT_CHARACTERS}
             value={draft}
-            placeholder="Send a message…"
+            placeholder="Send a message… (Shift+Enter for a new line)"
             onChange={(event) => updateDraft(event.currentTarget.value)}
-            onKeyDown={submitWithKeyboardShortcut}
-            aria-keyshortcuts="Meta+Enter Control+Enter"
+            onKeyDown={submitOnEnter}
+            aria-keyshortcuts="Enter"
             disabled={!isConnected || activeConversationId === undefined}
           />
           <button type="submit" disabled={!canSubmit}>
