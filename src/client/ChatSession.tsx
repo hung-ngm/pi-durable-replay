@@ -3,6 +3,7 @@ import { type MouseEvent, useEffect, useEffectEvent, useRef, useState } from "re
 import { type ConversationSummary, ROOT_CONVERSATION_ID } from "../protocol.ts";
 import type { ConversationSnapshot } from "./session-state.ts";
 import { ActivityPanel } from "./ActivityPanel.tsx";
+import { Button } from "./components/ui/button.tsx";
 import { ControlPanel } from "./ControlPanel.tsx";
 import { Thread } from "./Thread.tsx";
 import { type PiSession, usePiSession } from "./usePiSession.ts";
@@ -101,40 +102,46 @@ export function ChatSession({ sessionId, username }: ChatSessionProps) {
         className={`session-workspace${activityOpen ? " session-workspace--activity-open" : ""}`}
       >
         <aside className="session-sidebar">
-          <header className="session-header">
-            <a className="product-link" href="/">
+          <header className="session-header flex flex-col gap-1">
+            <a className="text-muted-foreground text-sm" href="/">
               pi-durable-replay
             </a>
             <h1>Session</h1>
-            <p className="participant-name">
-              Joining as <strong>{username}</strong>
+            <p className="text-muted-foreground text-sm">
+              Joining as <strong className="text-foreground font-medium">{username}</strong>
             </p>
-            <p className="connection-status" role="status">
+            <p className="connection-status text-sm" role="status">
               {statusLabel[session.status]}
             </p>
           </header>
 
           {session.error === undefined ? null : (
-            <p className="session-error" role="alert">
+            <p className="session-error text-destructive text-sm" role="alert">
               {session.error}
             </p>
           )}
 
           <nav className="conversation-navigation" aria-labelledby="conversations-heading">
-            <div className="conversation-navigation-header">
+            <div className="conversation-navigation-header flex flex-col gap-2">
               <h2 id="conversations-heading">Conversations</h2>
-              <button type="button" onClick={session.createConversation} disabled={!isConnected}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={session.createConversation}
+                disabled={!isConnected}
+              >
                 New conversation
-              </button>
+              </Button>
             </div>
             <div className="conversation-list" tabIndex={0}>
               {session.conversations.length === 0 ? (
-                <p className="conversation-list-empty">No conversations yet.</p>
+                <p className="text-muted-foreground text-sm">No conversations yet.</p>
               ) : (
-                <ul>
+                <ul className="flex flex-col gap-0.5">
                   {session.conversations.map((conversation) => (
                     <li key={conversation.id}>
                       <a
+                        className="hover:bg-accent aria-[current=page]:bg-accent block rounded-md px-2 py-1.5 text-sm no-underline aria-[current=page]:font-medium"
                         href={`?conversation=${conversation.id}`}
                         aria-current={conversation.id === activeConversationId ? "page" : undefined}
                         onClick={(event) => followConversationLink(event, conversation.id)}
@@ -166,16 +173,22 @@ export function ChatSession({ sessionId, username }: ChatSessionProps) {
               <h2 ref={conversationHeadingRef} id="transcript-heading" tabIndex={-1}>
                 {activeSummary === undefined ? "Conversation" : conversationLabel(activeSummary)}
               </h2>
-              <button
+              <Button
                 ref={activityToggleRef}
-                className="activity-toggle"
-                type="button"
+                variant="outline"
+                className="min-h-11"
                 aria-controls="activity-panel"
                 aria-expanded={activityOpen}
                 onClick={toggleActivity}
               >
-                Activity <span aria-hidden="true">{activityCount}</span>
-              </button>
+                Activity{" "}
+                <span
+                  aria-hidden="true"
+                  className="bg-background inline-grid min-w-6 place-items-center rounded-full px-1.5 text-xs tabular-nums"
+                >
+                  {activityCount}
+                </span>
+              </Button>
             </div>
             {activeConversation === undefined ? null : (
               <ConversationDetails conversation={activeConversation} />
@@ -267,7 +280,10 @@ function ConversationDetails({ conversation }: { readonly conversation: Conversa
         : `Host default except ${agent.tools.remove.join(", ")}`;
 
   return (
-    <section className="runtime-information" aria-label="Runtime information">
+    <section
+      className="runtime-information text-muted-foreground mt-1 text-xs"
+      aria-label="Runtime information"
+    >
       <dl>
         <div className="runtime-primary">
           <RuntimeDatum label="Model" value={model} />

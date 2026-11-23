@@ -1,5 +1,6 @@
 @layer theme, base, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
 @import "tailwindcss/utilities.css" layer(utilities);
 @import "tw-animate-css";
 
@@ -128,5 +129,39 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
+  }
+
+  h1 {
+    font-size: var(--text-2xl);
+    font-weight: 600;
+    letter-spacing: var(--tracking-tight);
+  }
+
+  h2 {
+    font-size: var(--text-lg);
+    font-weight: 600;
+  }
+
+  h3 {
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--color-muted-foreground);
+  }
+
+  a {
+    color: var(--color-foreground);
+    text-decoration: underline;
+    text-decoration-color: var(--color-border);
+    text-underline-offset: 4px;
+  }
+
+  a:hover {
+    text-decoration-color: currentColor;
+  }
+
+  a:focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+    border-radius: 2px;
   }
 }

@@ -1,6 +1,8 @@
 import { type SubmitEvent, useEffect, useState } from "react";
 import type { UsageState } from "@earendil-works/pi-durable";
 import type { ControlView } from "../protocol.ts";
+import { Button } from "./components/ui/button.tsx";
+import { Input } from "./components/ui/input.tsx";
 
 interface ControlPanelProps {
   readonly control: ControlView | undefined;
@@ -62,38 +64,46 @@ export function ControlPanel({
       : control.replays[String(activeConversationId)];
 
   return (
-    <section className="control-panel" aria-labelledby="control-heading">
+    <section className="flex flex-col gap-3 border-t p-4 text-sm" aria-labelledby="control-heading">
       <h2 id="control-heading">Control</h2>
 
-      <form onSubmit={saveBudgets}>
-        <p>
-          <label htmlFor="token-budget">Token budget per run</label>{" "}
-          <input
+      <form onSubmit={saveBudgets} className="flex flex-col gap-2">
+        <p className="flex flex-col gap-1">
+          <label htmlFor="token-budget" className="font-medium">
+            Token budget per run
+          </label>
+          <Input
+            className="h-8"
             id="token-budget"
             inputMode="numeric"
             value={tokenBudget}
             onChange={(event) => setTokenBudget(event.currentTarget.value)}
           />
         </p>
-        <p>
-          <label htmlFor="turn-budget">Turn budget per run</label>{" "}
-          <input
+        <p className="flex flex-col gap-1">
+          <label htmlFor="turn-budget" className="font-medium">
+            Turn budget per run
+          </label>
+          <Input
+            className="h-8"
             id="turn-budget"
             inputMode="numeric"
             value={turnBudget}
             onChange={(event) => setTurnBudget(event.currentTarget.value)}
           />
         </p>
-        <button type="submit">Save budgets</button>
-        <p className="control-note">New budgets apply to the next run only.</p>
+        <Button type="submit" size="sm" className="self-start">
+          Save budgets
+        </Button>
+        <p className="text-muted-foreground text-xs">New budgets apply to the next run only.</p>
       </form>
 
-      <p className="control-usage">
+      <p>
         Tokens used in this conversation: <strong>{totalTokens(usage).toLocaleString()}</strong>
       </p>
 
       {lastKill === undefined ? null : (
-        <p className="control-last-kill" role="status">
+        <p className="text-xs" role="status">
           Last kill: {lastKill.scope} ({lastKill.reason}
           {lastKill.budget === undefined ? "" : `: ${lastKill.budget} budget`}) at{" "}
           {new Date(lastKill.at).toLocaleTimeString()}
@@ -101,8 +111,8 @@ export function ControlPanel({
       )}
 
       {replay === undefined ? null : (
-        <div className="control-replay">
-          <p className="control-note">
+        <div className="flex flex-col items-start gap-2">
+          <p className="text-muted-foreground text-xs">
             Fork Replay of conversation #{replay.sourceConversationId}, forked at entry #
             {replay.forkEntryId}. Carried forward:{" "}
             {replay.carried.length === 0
@@ -112,36 +122,36 @@ export function ControlPanel({
           </p>
           {replay.pendingUnsafeApproval ? (
             <>
-              <p className="control-note">
+              <p className="text-muted-foreground text-xs">
                 An unsafe tool result was carried forward. It will not run again without your
                 approval.
               </p>
-              <button
-                className="text-button"
-                type="button"
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => {
                   if (activeConversationId !== undefined) onApproveUnsafe(activeConversationId);
                 }}
               >
                 Approve unsafe tools in this replay
-              </button>
+              </Button>
             </>
           ) : replay.approvedAt === undefined ? null : (
-            <p className="control-note">Unsafe tools approved for this replay.</p>
+            <p className="text-muted-foreground text-xs">Unsafe tools approved for this replay.</p>
           )}
         </div>
       )}
-      <div className="control-faults">
-        <p className="control-note">
+      <div className="flex flex-col gap-2">
+        <p className="text-muted-foreground text-xs">
           Fault injection
           {control === undefined || control.crashAttempts === 0
             ? ""
             : ` - crash_loop attempts so far: ${control.crashAttempts}`}
         </p>
-        <div className="control-actions">
-          <button
-            className="text-button"
-            type="button"
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
             disabled={activeConversationId === undefined}
             onClick={() => {
               if (activeConversationId !== undefined) {
@@ -150,10 +160,10 @@ export function ControlPanel({
             }}
           >
             Interrupt unsafe tool
-          </button>
-          <button
-            className="text-button"
-            type="button"
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
             disabled={activeConversationId === undefined}
             onClick={() => {
               if (activeConversationId !== undefined) {
@@ -162,38 +172,39 @@ export function ControlPanel({
             }}
           >
             Crash-loop tool
-          </button>
-          <button
-            className="text-button"
-            type="button"
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={() => {
               if (activeConversationId !== undefined) onInjectFault(activeConversationId, "evict");
             }}
             disabled={activeConversationId === undefined}
           >
             Evict object
-          </button>
+          </Button>
         </div>
       </div>
-      <div className="control-actions">
-        <button
-          type="button"
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="destructive"
+          size="sm"
           disabled={activeConversationId === undefined}
           onClick={() => {
             if (activeConversationId !== undefined) onAbortConversation(activeConversationId);
           }}
         >
           Kill conversation
-        </button>
-        <button type="button" onClick={onAbortSession}>
+        </Button>
+        <Button variant="destructive" size="sm" onClick={onAbortSession}>
           Kill all
-        </button>
+        </Button>
       </div>
 
       {control === undefined || control.kills.length === 0 ? null : (
         <>
           <h3>Kills</h3>
-          <ul className="control-kills">
+          <ul className="text-muted-foreground flex flex-col gap-1 text-xs">
             {[...control.kills].reverse().map((kill, index) => (
               <li key={`${kill.at}-${index}`}>
                 {kill.scope} · {kill.reason}
@@ -210,7 +221,7 @@ export function ControlPanel({
       {control === undefined || control.ledger.length === 0 ? null : (
         <>
           <h3>Ledger</h3>
-          <ul className="control-ledger">
+          <ul className="text-muted-foreground flex flex-col gap-1 text-xs">
             {control.ledger.map((entry) => (
               <li key={entry.taskId}>
                 {entry.credits} credits · {entry.memo} · task #{entry.taskId} ·{" "}

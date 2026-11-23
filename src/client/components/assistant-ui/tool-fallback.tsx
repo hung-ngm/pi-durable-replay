@@ -31,7 +31,7 @@ const rowIcon: Record<ToolRowStatus, LucideIcon> = {
 };
 
 export const disclosureTrigger =
-  "group/trigger text-muted-foreground hover:text-foreground focus-visible:ring-ring flex w-fit max-w-full cursor-pointer items-center gap-2 rounded-sm border-0 bg-transparent p-0 py-1.5 text-sm outline-none transition-[color,scale] focus-visible:ring-2 active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100";
+  "group/trigger text-muted-foreground hover:text-foreground focus-visible:ring-ring flex w-fit max-w-full cursor-pointer items-center gap-2 rounded-sm py-1.5 text-sm outline-none transition-[color,scale] focus-visible:ring-2 active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100";
 
 export const disclosureContent =
   "overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none";

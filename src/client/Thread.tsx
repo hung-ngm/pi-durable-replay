@@ -83,7 +83,7 @@ export function Thread({ conversation, onFork, onReplay, onFillGap }: ThreadProp
             </ThreadPrimitive.Empty>
           )}
           {conversation?.hasEarlier === true ? (
-            <ThreadPrimitive.LoadEarlier className="text-muted-foreground hover:bg-accent mb-6 cursor-pointer self-center rounded-full border-0 bg-transparent px-3 py-1.5 text-sm">
+            <ThreadPrimitive.LoadEarlier className="text-muted-foreground hover:bg-accent mb-6 cursor-pointer self-center rounded-full px-3 py-1.5 text-sm">
               Load earlier messages
             </ThreadPrimitive.LoadEarlier>
           ) : null}
@@ -144,7 +144,7 @@ export function Thread({ conversation, onFork, onReplay, onFillGap }: ThreadProp
 
 function Composer() {
   return (
-    <ComposerPrimitive.Root className="border-foreground/10 focus-within:border-foreground/25 focus-within:ring-ring/50 flex w-full flex-col gap-2 rounded-2xl border border-solid bg-[color-mix(in_oklab,var(--color-muted)_30%,transparent)] p-2 transition-[border-color] focus-within:ring-2">
+    <ComposerPrimitive.Root className="border-foreground/10 focus-within:border-foreground/25 focus-within:ring-ring/50 flex w-full flex-col gap-2 rounded-2xl border bg-[color-mix(in_oklab,var(--color-muted)_30%,transparent)] p-2 transition-[border-color] focus-within:ring-2">
       <label className="sr-only" htmlFor="prompt">
         Message
       </label>
@@ -158,7 +158,7 @@ function Composer() {
         submitMode="enter"
         enterKeyHint="send"
         aria-keyshortcuts="Enter"
-        className="caret-primary placeholder:text-muted-foreground/60 text-foreground max-h-48 min-h-10 w-full resize-none border-0 bg-transparent px-2.5 py-1 font-[inherit] text-base leading-6 outline-none"
+        className="caret-primary placeholder:text-muted-foreground/60 text-foreground max-h-48 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 font-[inherit] text-base leading-6 outline-none"
       />
       <div className="flex items-center justify-end gap-1.5">
         <AuiIf condition={(s) => !s.thread.isRunning}>
@@ -294,7 +294,7 @@ function Message({ onFork, onReplay, onFillGap }: Omit<ThreadProps, "conversatio
       <div className="flex flex-col gap-2">{parts}</div>
       <MessagePrimitive.Error>
         <ErrorPrimitive.Root
-          className="border-destructive bg-destructive/10 text-destructive mt-2 flex items-center gap-3 rounded-md border border-solid p-3 text-sm dark:text-red-200"
+          className="border-destructive bg-destructive/10 text-destructive mt-2 flex items-center gap-3 rounded-md border p-3 text-sm dark:text-red-200"
           role="alert"
         >
           <TriangleAlertIcon className="size-4 shrink-0" aria-hidden />

@@ -6,7 +6,7 @@ import type { ComponentProps } from "react";
 import { cn } from "../../lib/utils.ts";
 
 const buttonVariants = cva(
-  "focus-visible:border-ring focus-visible:ring-ring/50 inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border-0 text-sm font-medium whitespace-nowrap transition-all outline-none focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "focus-visible:border-ring focus-visible:ring-ring/50 inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all outline-none focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
@@ -16,9 +16,8 @@ const buttonVariants = cva(
         outline:
           "bg-muted/70 text-foreground hover:bg-muted dark:bg-muted/50 dark:hover:bg-muted border-transparent",
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        ghost:
-          "bg-transparent text-inherit hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
-        link: "bg-transparent text-primary underline-offset-4 hover:underline",
+        ghost: "text-inherit hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
+        link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
         default: "h-9 px-4 py-2 has-[>svg]:px-3",

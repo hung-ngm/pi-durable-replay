@@ -1,5 +1,6 @@
 import type { MouseEvent, ReactNode, Ref } from "react";
 import type { BlockedReason, TaskGraph, TaskGraphNode } from "@earendil-works/pi-durable";
+import { Button } from "./components/ui/button.tsx";
 
 interface ActivityPanelProps {
   readonly graph: TaskGraph | undefined;
@@ -87,22 +88,23 @@ export function ActivityPanel({
       <li key={node.id}>
         <article className="activity-task">
           <header>
-            <strong>{node.kind}</strong>
-            <span>#{node.id}</span>
+            <strong className="font-medium">{node.kind}</strong>
+            <span className="text-muted-foreground">#{node.id}</span>
           </header>
-          <p className="activity-task-status">{taskStatus(node)}</p>
+          <p className="activity-task-status text-muted-foreground">{taskStatus(node)}</p>
           {onAbortTask === undefined || node.abortRequested ? null : (
-            <p className="activity-task-actions">
-              <button
-                type="button"
+            <p>
+              <Button
+                variant="destructive"
+                size="xs"
                 onClick={() => onAbortTask(node.id, node.kind === "pi.generation" ? "run" : "tool")}
               >
                 {node.kind === "pi.generation" ? "Kill run" : "Kill task"}
-              </button>
+              </Button>
             </p>
           )}
           {node.blocked === undefined ? null : (
-            <p className="activity-task-blocked">{blockedReasons[node.blocked]}</p>
+            <p className="activity-task-blocked font-semibold">{blockedReasons[node.blocked]}</p>
           )}
           <p className="activity-task-conversation">
             {conversationLink(node.conversationId, `Conversation #${node.conversationId}`)}
@@ -144,17 +146,17 @@ export function ActivityPanel({
       <header className="activity-header">
         <div>
           <h2 id="activity-heading">Activity</h2>
-          <p>{countLabel}</p>
+          <p className="text-muted-foreground text-sm">{countLabel}</p>
         </div>
-        <button ref={closeButtonRef} type="button" onClick={onClose}>
+        <Button ref={closeButtonRef} variant="ghost" className="min-h-11" onClick={onClose}>
           Close
-        </button>
+        </Button>
       </header>
       <div className="activity-content">
         {graph === undefined ? (
-          <p className="activity-empty">Loading activity…</p>
+          <p className="text-muted-foreground text-sm">Loading activity…</p>
         ) : roots.length === 0 ? (
-          <p className="activity-empty">No active tasks</p>
+          <p className="text-muted-foreground text-sm">No active tasks</p>
         ) : (
           <ol className="activity-tree" aria-label="Active task graph">
             {roots.map(task)}

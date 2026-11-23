@@ -272,6 +272,8 @@ As built: the registry's `tool-fallback` is 1,337 lines of approval and timeline
 
 ## R4. Dashboards and sign-in take the tokens
 
+As built: preflight is on, and a small base layer in `globals.css` sets headings and links. Every button is the copied `Button` and every field the copied shadcn `Input`. The workspace grid rules stay in `styles.css`, because PR5 replaces that layout with the sidebar and sheet; porting them now would be thrown away. JS gzip 232,508, CSS 8,256.
+
 - [ ] Depends on: R3.
 - [ ] Files: `src/client/App.tsx`, `src/client/ChatSession.tsx`, `src/client/ControlPanel.tsx`, `src/client/ActivityPanel.tsx`, `src/client/styles.css`.
 - [ ] Change: the sidebar, Control panel, Activity panel, conversation header, and sign-in form use the shadcn `Button` and the tokens. Structure and behaviour stay. Today's responsive layout (Activity as an overlay below 75rem) is restyled in place.

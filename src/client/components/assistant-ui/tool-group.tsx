@@ -38,9 +38,7 @@ export function ToolGroup({
         <DisclosureChevron />
       </CollapsibleTrigger>
       <CollapsibleContent className={disclosureContent}>
-        <div className="border-border ms-2 flex flex-col border-0 border-s border-solid ps-3">
-          {children}
-        </div>
+        <div className="border-border ms-2 flex flex-col border-s ps-3">{children}</div>
       </CollapsibleContent>
     </Collapsible>
   );
