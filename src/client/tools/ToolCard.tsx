@@ -27,12 +27,6 @@ interface SearchDetails {
   readonly hits: readonly Hit[];
 }
 
-interface SlowSearchProgress {
-  readonly stage: number;
-  readonly stages: number;
-  readonly query: string;
-}
-
 interface ResearchDetails {
   readonly question?: string;
   readonly conversationIds?: readonly number[];
@@ -41,11 +35,10 @@ interface ResearchDetails {
 
 const toolBodies: Record<string, Body> = {
   search: SearchBody,
-  slow_search: SlowSearchBody,
   research: ResearchBody,
 };
 
-const faultTools = new Set(["loop_forever", "crash_loop"]);
+const faultTools = new Set(["loop_forever"]);
 
 function toolRowStatus(part: ToolCallPart): ToolRowStatus {
   if (part.approval !== undefined) return "blocked";
@@ -131,28 +124,6 @@ function Hits({ query, hits }: { readonly query: string; readonly hits: readonly
       )}
     </div>
   );
-}
-
-function SlowSearchBody({ part }: { readonly part: ToolCallPart }) {
-  if (part.isPreliminary === true) {
-    const progress = detailsOf<SlowSearchProgress>(part);
-    if (progress?.stage === undefined) return null;
-    return (
-      <div className="flex flex-col gap-1.5">
-        <p className="text-muted-foreground text-xs">
-          Stage {progress.stage} of {progress.stages} for{" "}
-          <span className="text-foreground">{progress.query}</span>
-        </p>
-        <progress
-          className="accent-primary h-1.5 w-full max-w-60"
-          value={progress.stage}
-          max={progress.stages}
-          aria-label="slow_search progress"
-        />
-      </div>
-    );
-  }
-  return <SearchBody part={part} />;
 }
 
 function ResearchBody({ part }: { readonly part: ToolCallPart }) {

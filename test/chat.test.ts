@@ -446,7 +446,6 @@ describe("chat application", () => {
           turnBudget: 30,
           kills: [],
           replays: {},
-          crashAttempts: 0,
         },
       },
     });
@@ -461,7 +460,7 @@ describe("chat application", () => {
           "pi.agent": {
             model: { provider: "openai", modelId: "gpt-6-luna" },
             thinkingLevel: "off",
-            tools: ["search", "research", "slow_search", "loop_forever", "crash_loop"],
+            tools: ["search", "research", "loop_forever"],
           },
         },
       },

@@ -11,7 +11,7 @@ interface ControlPanelProps {
   readonly onSetBudgets: (tokenBudget: number, turnBudget: number) => void;
   readonly onAbortConversation: (conversationId: number) => void;
   readonly onAbortSession: () => void;
-  readonly onInjectFault: (conversationId: number, kind: "crash-loop" | "evict") => void;
+  readonly onCrashNow: (conversationId: number) => void;
 }
 
 const totalTokens = (usage: UsageState | undefined): number => {
@@ -24,7 +24,7 @@ const totalTokens = (usage: UsageState | undefined): number => {
   return total;
 };
 
-/** Budgets, kills, faults, replay provenance, and usage: the control plane in one panel. */
+/** Budgets, kills, Crash now, replay provenance, and usage: the control plane in one panel. */
 export function ControlPanel({
   control,
   usage,
@@ -32,7 +32,7 @@ export function ControlPanel({
   onSetBudgets,
   onAbortConversation,
   onAbortSession,
-  onInjectFault,
+  onCrashNow,
 }: ControlPanelProps) {
   const [tokenBudget, setTokenBudget] = useState("");
   const [turnBudget, setTurnBudget] = useState("");
@@ -125,37 +125,21 @@ export function ControlPanel({
           )}
         </div>
       )}
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col items-start gap-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={activeConversationId === undefined}
+          onClick={() => {
+            if (activeConversationId !== undefined) onCrashNow(activeConversationId);
+          }}
+        >
+          Crash now
+        </Button>
         <p className="text-muted-foreground text-xs">
-          Fault injection
-          {control === undefined || control.crashAttempts === 0
-            ? ""
-            : ` - crash_loop attempts so far: ${control.crashAttempts}`}
+          Evicts the Durable Object. The run wakes through its alarm and resumes from its last
+          checkpoint.
         </p>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={activeConversationId === undefined}
-            onClick={() => {
-              if (activeConversationId !== undefined) {
-                onInjectFault(activeConversationId, "crash-loop");
-              }
-            }}
-          >
-            Crash-loop tool
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => {
-              if (activeConversationId !== undefined) onInjectFault(activeConversationId, "evict");
-            }}
-            disabled={activeConversationId === undefined}
-          >
-            Evict object
-          </Button>
-        </div>
       </div>
       <div className="flex flex-wrap gap-2">
         <Button

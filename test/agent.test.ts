@@ -139,24 +139,4 @@ describe("research agent", () => {
       await harness.close(context);
     }
   });
-
-  it("slow_search streams stages and returns corpus hits", async () => {
-    const { harness, root } = await openAgent([
-      fauxAssistantMessage([fauxToolCall("slow_search", { query: "fork replay", seconds: 0 })], {
-        stopReason: "toolUse",
-      }),
-      fauxAssistantMessage([fauxText("Done.")]),
-    ]);
-    try {
-      const submission = await root.submit(
-        { type: "input", content: "Slow-search fork replay" },
-        context,
-      );
-      const settled = await submission.wait(context);
-      expect(settled.status).toBe("done");
-      expect(settled.status).toBe("done");
-    } finally {
-      await harness.close(context);
-    }
-  });
 });

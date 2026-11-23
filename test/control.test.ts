@@ -3,7 +3,6 @@ import { createModels, type AssistantMessage } from "@earendil-works/pi-ai";
 import {
   fauxAssistantMessage,
   fauxProvider,
-  fauxText,
   fauxToolCall,
   type FauxResponseStep,
 } from "@earendil-works/pi-ai";
@@ -60,18 +59,13 @@ const withUsage = (message: AssistantMessage, totalTokens: number): AssistantMes
 };
 
 describe("control: kills and budgets (SPEC tests 1, 2, 8)", () => {
-  it("test 1: a manual run kill during slow_search ends the run and its owned tool task", async () => {
-    const { harness, root, graph } = await openAgent([
-      fauxAssistantMessage([fauxToolCall("slow_search", { query: "budgets", seconds: 60 })], {
-        stopReason: "toolUse",
-      }),
-      fauxAssistantMessage([fauxText("never reached")]),
-    ]);
+  it("test 1: a manual run kill during loop_forever ends the run and everything it owns", async () => {
+    const loopCall = fauxAssistantMessage([fauxToolCall("loop_forever", { topic: "kill" })], {
+      stopReason: "toolUse",
+    });
+    const { harness, root, graph } = await openAgent(Array.from({ length: 400 }, () => loopCall));
     try {
-      const submission = await root.submit(
-        { type: "input", content: "Slow search budgets" },
-        context,
-      );
+      const submission = await root.submit({ type: "input", content: "Loop forever" }, context);
       await poll(() =>
         Object.values(graph().tasks).find(
           (node) => node.kind === "pi.tool" && node.state.status === "running",
@@ -132,18 +126,18 @@ describe("control: kills and budgets (SPEC tests 1, 2, 8)", () => {
   }, 60_000);
 
   it("test 8: budget edits apply to the next run only; the in-flight run keeps its snapshot", async () => {
-    const slowCall = () =>
-      withUsage(
-        fauxAssistantMessage([fauxToolCall("slow_search", { query: "replay", seconds: 60 })], {
-          stopReason: "toolUse",
-        }),
-        5_000,
-      );
-    const { harness, root, graph } = await openAgent([
-      slowCall(),
-      slowCall(),
-      fauxAssistantMessage([fauxText("unused")]),
-    ]);
+    // Only the root conversation loops; each recruited child answers once and stops,
+    // so the children cannot drain the scripted responses that run 2 needs.
+    const step: FauxResponseStep = (transcript) =>
+      JSON.stringify(transcript).includes("Call the loop_forever tool")
+        ? fauxAssistantMessage("child done")
+        : withUsage(
+            fauxAssistantMessage([fauxToolCall("loop_forever", { topic: "budgets" })], {
+              stopReason: "toolUse",
+            }),
+            5_000,
+          );
+    const { harness, root, graph } = await openAgent(Array.from({ length: 400 }, () => step));
     try {
       await setBudgets(harness, { tokenBudget: 100_000_000, turnBudget: 1_000 }, context);
 

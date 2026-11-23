@@ -174,13 +174,13 @@ describe("conversation projection", () => {
   it("shows a running tool's progress on its committed call", () => {
     const state = show(
       initialSessionState,
-      viewOf([toolRequest(3, "call-1", "slow_search")], {
+      viewOf([toolRequest(3, "call-1", "research")], {
         "pi.live": {
           run: { taskId: 5, inputs: [2], turns: 1 },
           tools: [
             {
               callId: "call-1",
-              name: "slow_search",
+              name: "research",
               status: "running",
               taskId: 8,
               output: "stage 2 of 3",
@@ -202,7 +202,7 @@ describe("conversation projection", () => {
   });
 
   it("marks a call left without a result as cancelled once no run is live", () => {
-    const state = show(initialSessionState, viewOf([toolRequest(3, "call-1", "slow_search")]));
+    const state = show(initialSessionState, viewOf([toolRequest(3, "call-1", "research")]));
     expect(messagesOf(state)[0]?.status).toEqual({ type: "incomplete", reason: "cancelled" });
   });
 

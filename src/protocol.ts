@@ -137,11 +137,10 @@ export type ClientCommand =
       readonly conversationId: number;
     }
   | {
-      /** Inject a demo fault: arm the crash loop, or evict the object. */
+      /** Crash now: evict the object mid-run so it wakes through its alarm and resumes. */
       readonly type: "fault.inject";
       readonly requestId: string;
       readonly conversationId: number;
-      readonly kind: "crash-loop" | "evict";
     }
   | {
       readonly type: "control.setBudgets";
@@ -158,8 +157,6 @@ export interface ControlView {
   readonly kills: readonly KillRecord[];
   /** Fork Replay provenance by conversation ID, for conversations that are replays. */
   readonly replays: Readonly<Record<string, ReplayState>>;
-  /** crash_loop fault-tool executions so far (fault evidence for the panel). */
-  readonly crashAttempts: number;
 }
 
 export type CommandResult =
@@ -464,18 +461,12 @@ export function parseClientCommand(message: string): ClientCommand {
         conversationId: requireId(value.conversationId, "conversationId"),
         entryId: requireId(value.entryId, "entryId"),
       };
-    case "fault.inject": {
-      const kind = value.kind;
-      if (kind !== "crash-loop" && kind !== "evict") {
-        throw new InvalidClientCommand("kind must be crash-loop or evict");
-      }
+    case "fault.inject":
       return {
         type: value.type,
         requestId,
         conversationId: requireId(value.conversationId, "conversationId"),
-        kind,
       };
-    }
     case "run.approveUnsafe":
       return {
         type: value.type,
@@ -560,10 +551,6 @@ function parseControlView(value: unknown): ControlView {
     turnBudget: value.turnBudget,
     kills: value.kills as KillRecord[],
     replays: (isRecord(value.replays) ? value.replays : {}) as Record<string, ReplayState>,
-    crashAttempts:
-      typeof value.crashAttempts === "number" && Number.isSafeInteger(value.crashAttempts)
-        ? value.crashAttempts
-        : 0,
   };
 }
 

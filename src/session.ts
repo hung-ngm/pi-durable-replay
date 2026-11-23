@@ -24,17 +24,7 @@ import {
   readControl,
   setBudgets as setControlBudgets,
 } from "./control.ts";
-import { CrashDoc } from "./tools.ts";
 import { approveUnsafe, readReplay, replayFork, type ReplayState } from "./replay.ts";
-import {
-  armCrashLoop,
-  clearCrashLoop,
-  conversationHasToolResult,
-  findLiveToolTask,
-  noteCrashLoopAbort,
-  readFaults,
-} from "./faults.ts";
-import { CRASH_LOOP_TOOL_NAME } from "./tools.ts";
 import {
   InvalidClientCommand,
   MAX_CLIENT_FRAME_CHARACTERS,
@@ -178,14 +168,6 @@ export class Session extends DurableObject<Env> {
   readonly #typingConnections = new Set<WebSocket>();
   readonly #connectionOperations = new KeyedSerialQueue<WebSocket>();
   #alarmWrites: Promise<void> = Promise.resolve();
-  /**
-   * While the crash-loop fault is armed, the recovery heartbeat runs at 2s
-   * instead of 60s: each cut is followed by a wake, a resume, and the next
-   * cut, and a 60s cadence would stretch the demo over five minutes. (An
-   * alarm set immediately before ctx.abort does not reliably drive the next
-   * cycle in the test pool; the heartbeat path does.)
-   */
-  #fastHeartbeat = false;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -230,7 +212,6 @@ export class Session extends DurableObject<Env> {
         if (call.kind === "value") {
           this.#broadcast({ type: "session.activity", activity: call.value });
           this.#scheduleBudgetCheck();
-          this.#scheduleCrashLoopCheck();
         }
       });
       // Subagents are created by background tool tasks, not client commands.
@@ -238,7 +219,6 @@ export class Session extends DurableObject<Env> {
       harness.observeCommits({
         advance: (publication) => {
           this.#scheduleBudgetCheck();
-          this.#scheduleCrashLoopCheck();
           if (changesControlView(publication)) this.#scheduleSnapshotBroadcast();
           for (const change of publication.changes) {
             if (change.type !== "conversation" || change.value.owner === undefined) continue;
@@ -251,8 +231,6 @@ export class Session extends DurableObject<Env> {
         end: () => {},
       });
       await this.#restoreViews();
-      this.#fastHeartbeat =
-        (await readFaults(harness, BACKGROUND_CONTEXT)).crashLoopConversationId !== undefined;
       // Armed before `resume()` runs anything, as for any call that can start work.
       await this.#arm(harness.wake());
       // Continue work a lost instance left, and make due sleeps runnable.
@@ -599,29 +577,6 @@ export class Session extends DurableObject<Env> {
       }
       case "fault.inject": {
         const conversationId = command.conversationId as ConversationId;
-        if (command.kind === "crash-loop") {
-          await armCrashLoop(this.#harness, conversationId, BACKGROUND_CONTEXT);
-          this.#fastHeartbeat = true;
-          const conversation = await this.#requireConversation(conversationId);
-          await this.#arm({ ...this.#harness.wake(), active: true });
-          await conversation.submit(
-            {
-              type: "input",
-              content:
-                'Call the crash_loop tool with topic "fault injection" now. Do not answer any other way.',
-              requestId: command.requestId,
-            },
-            BACKGROUND_CONTEXT,
-          );
-          this.#send(socket, {
-            type: "command.result",
-            command: command.type,
-            requestId: command.requestId,
-            ok: true,
-            conversationId,
-          });
-          return;
-        }
         // Evict: reply first, arm a near-immediate alarm so the object wakes and
         // resumes through it, then cut this instance off.
         this.#send(socket, {
@@ -736,67 +691,6 @@ export class Session extends DurableObject<Env> {
     })();
   }
 
-  #crashLoopCheckRunning = false;
-  #crashLoopCheckPending = false;
-
-  /**
-   * While the crash-loop fault is armed, cut the object off (an eviction) every
-   * time the crash_loop tool is seen running, until its result lands at the
-   * restart limit. The arm lives in FaultDoc because it must survive the cuts.
-   */
-  #scheduleCrashLoopCheck(): void {
-    if (this.#crashLoopCheckRunning) {
-      this.#crashLoopCheckPending = true;
-      return;
-    }
-    this.#crashLoopCheckRunning = true;
-    void (async () => {
-      try {
-        do {
-          this.#crashLoopCheckPending = false;
-          const faults = await readFaults(this.#harness, BACKGROUND_CONTEXT);
-          const conversationId = faults.crashLoopConversationId;
-          if (conversationId === undefined) continue;
-          const target = conversationId as ConversationId;
-          const ended = await conversationHasToolResult(
-            this.#harness,
-            target,
-            CRASH_LOOP_TOOL_NAME,
-            "restart_limit",
-            BACKGROUND_CONTEXT,
-          );
-          if (ended || faults.aborts >= 12) {
-            await clearCrashLoop(this.#harness, BACKGROUND_CONTEXT);
-            this.#fastHeartbeat = false;
-            continue;
-          }
-          const taskId = await findLiveToolTask(
-            this.#harness,
-            target,
-            CRASH_LOOP_TOOL_NAME,
-            BACKGROUND_CONTEXT,
-          );
-          if (taskId === undefined) continue;
-          // Cut only a fresh execution: the tool increments CrashDoc at the
-          // start of every run, so an attempt beyond the last cut is real work
-          // in flight, not a pending task that has not started yet.
-          const attempts =
-            (await this.#harness.snapshot(CrashDoc, BACKGROUND_CONTEXT))?.attempts ?? 0;
-          if (attempts <= (faults.attemptsAtLastAbort ?? 0)) continue;
-          if (faults.lastAbortAt !== undefined && Date.now() - faults.lastAbortAt < 600) continue;
-          await noteCrashLoopAbort(this.#harness, attempts, BACKGROUND_CONTEXT);
-          await this.ctx.storage.setAlarm(Date.now() + 250);
-          this.ctx.abort("Fault injection: crash loop");
-          return;
-        } while (this.#crashLoopCheckPending);
-      } catch (error) {
-        reportError("Crash-loop check failed", error);
-      } finally {
-        this.#crashLoopCheckRunning = false;
-      }
-    })();
-  }
-
   async #requireConversation(id: ConversationId): Promise<Conversation> {
     const conversation = await this.#harness.conversation(id, BACKGROUND_CONTEXT);
     if (conversation === undefined) throw new Error(`Conversation ${id} does not exist`);
@@ -837,14 +731,11 @@ export class Session extends DurableObject<Env> {
       );
       if (replay !== undefined) replays[String(conversation.id)] = replay;
     }
-    const crashAttempts =
-      (await this.#harness.snapshot(CrashDoc, BACKGROUND_CONTEXT))?.attempts ?? 0;
     return {
       tokenBudget: control.tokenBudget,
       turnBudget: control.turnBudget,
       kills: control.kills,
       replays,
-      crashAttempts,
     };
   }
 
@@ -977,9 +868,7 @@ export class Session extends DurableObject<Env> {
   #arm(wake: Wake): Promise<void> {
     // Serialized, so an older wake cannot overwrite a newer, earlier deadline.
     const write = this.#alarmWrites.then(async () => {
-      const heartbeat = wake.active
-        ? Date.now() + (this.#fastHeartbeat ? 2_000 : HEARTBEAT_MS)
-        : undefined;
+      const heartbeat = wake.active ? Date.now() + HEARTBEAT_MS : undefined;
       // `wake.at` is on the Harness clock, which is the default `Date.now`.
       const at =
         heartbeat === undefined || wake.at === undefined

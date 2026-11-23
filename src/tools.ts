@@ -1,10 +1,8 @@
-import type { Context } from "@earendil-works/chord/context";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { int, obj, opt, str } from "@earendil-works/pi-schema";
+import { obj, str } from "@earendil-works/pi-schema";
 import {
   AssistantEntry,
   configure,
-  defineDoc,
   defineExtension,
   type ConversationId,
   type Extension,
@@ -14,18 +12,7 @@ import { searchCorpus, type CorpusHit } from "./corpus.ts";
 
 export const SEARCH_TOOL_NAME = "search";
 export const RESEARCH_TOOL_NAME = "research";
-export const SLOW_SEARCH_TOOL_NAME = "slow_search";
 export const LOOP_FOREVER_TOOL_NAME = "loop_forever";
-export const CRASH_LOOP_TOOL_NAME = "crash_loop";
-
-/** Execution attempts of the crash_loop fault tool, session-scoped (SPEC test 6 evidence). */
-export const CrashDoc = defineDoc<{ attempts: number }>({
-  kind: "app.crash",
-  version: 1,
-  scope: "session",
-  initial: () => ({ attempts: 0 }),
-  checkpointWhen: () => true,
-});
 
 export interface ToolConfig {
   readonly searchBackend: string;
@@ -61,9 +48,7 @@ async function searchExa(query: string, apiKey: string, limit = 3): Promise<read
 export interface AgentTools {
   readonly searchTool: ToolRegistration;
   readonly researchTool: ToolRegistration;
-  readonly slowSearchTool: ToolRegistration;
   readonly loopForeverTool: ToolRegistration;
-  readonly crashLoopTool: ToolRegistration;
   readonly all: readonly ToolRegistration[];
   /**
    * Extensions selected by name on the conversations the tools create: `search` for
@@ -178,34 +163,6 @@ export function createTools(config: ToolConfig): AgentTools {
     },
   };
 
-  const slowSearchTool: ToolRegistration = {
-    name: SLOW_SEARCH_TOOL_NAME,
-    description:
-      "A deliberately slow staged search (fault tool, for kill-switch demos): streams progress over several seconds, then returns corpus hits. Use when asked to demonstrate a long-running tool call.",
-    parameters: obj({
-      query: str({ description: "What to look for" }),
-      seconds: opt(
-        int({ minimum: 0, maximum: 120, description: "Total seconds to take (default 8)" }),
-      ),
-    }),
-    replay: "safe",
-    execute: async (args, api, context) => {
-      const { query, seconds } = args as { query: string; seconds?: number };
-      const totalMs = (seconds ?? 8) * 1000;
-      const stages = 4;
-      for (let stage = 1; stage <= stages; stage++) {
-        api.output(`slow_search stage ${stage}/${stages} for ${JSON.stringify(query)}\n`);
-        await api.details({ stage, stages, query }, context);
-        if (stage < stages) await sleep(totalMs / stages);
-      }
-      const hits = await runSearch(query);
-      return {
-        output: [{ type: "text" as const, text: JSON.stringify({ query, hits }) }],
-        details: { query, hits: [...hits] },
-      };
-    },
-  };
-
   const loopForeverTool: ToolRegistration = {
     name: LOOP_FOREVER_TOOL_NAME,
     description:
@@ -250,38 +207,11 @@ export function createTools(config: ToolConfig): AgentTools {
 
   const loopExtension = defineExtension({ name: "loop", tools: [loopForeverTool] });
 
-  const crashLoopTool: ToolRegistration = {
-    name: CRASH_LOOP_TOOL_NAME,
-    description:
-      "FAULT TOOL: starts and then hangs for 30 seconds, so every process crash, eviction, or reset cuts it off mid-run; after the restart limit (5) it ends with a restart_limit report instead of running again. Only call when asked to demonstrate a crash loop.",
-    parameters: obj({
-      topic: str({ description: "What the crash loop is nominally about" }),
-    }),
-    replay: "safe",
-    execute: async (args, api, context) => {
-      const { topic } = args as { topic: string };
-      const attempts = await api.commit(async (tx) => {
-        const doc = await tx.doc(CrashDoc);
-        doc.attempts += 1;
-        return doc.attempts;
-      }, context);
-      api.output(`crash_loop attempt ${attempts} for ${JSON.stringify(topic)}: running\n`);
-      await api.details({ attempt: attempts, topic }, context);
-      await sleep(30_000);
-      return {
-        output: [{ type: "text" as const, text: `crash_loop finished attempt ${attempts}` }],
-        details: { attempt: attempts },
-      };
-    },
-  };
-
   return {
     searchTool,
     researchTool,
-    slowSearchTool,
     loopForeverTool,
-    crashLoopTool,
-    all: [searchTool, researchTool, slowSearchTool, loopForeverTool, crashLoopTool],
+    all: [searchTool, researchTool, loopForeverTool],
     childExtensions: [searchExtension, loopExtension],
   };
 }

@@ -58,7 +58,7 @@ export const ControlDoc = defineDoc<ControlState>({
   checkpointWhen: (value) => value.kills.length === 0 && Object.keys(value.runs).length === 0,
 });
 
-const CONTROL_VIEW_KINDS: ReadonlySet<string> = new Set(["app.control", "app.replay", "app.crash"]);
+const CONTROL_VIEW_KINDS: ReadonlySet<string> = new Set(["app.control", "app.replay"]);
 
 /** Whether a commit changed a document the Control view is built from. */
 export const changesControlView = (publication: CommitPublication): boolean =>
