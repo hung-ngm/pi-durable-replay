@@ -13,7 +13,13 @@ export default defineConfig({
     cloudflareTest({
       wrangler: { configPath: "./wrangler.jsonc" },
       miniflare: {
-        bindings: { OPENAI_API_KEY: "test-openai-key", CONTROL_TOKEN: "test-control-token" },
+        // Tests search the built-in corpus so they stay deterministic and offline;
+        // the deployed Worker searches Exa (wrangler.jsonc vars).
+        bindings: {
+          OPENAI_API_KEY: "test-openai-key",
+          CONTROL_TOKEN: "test-control-token",
+          SEARCH_BACKEND: "corpus",
+        },
       },
     }),
   ],

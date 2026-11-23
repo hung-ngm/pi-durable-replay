@@ -25,7 +25,7 @@ V1 has one user, the operator, gated by one bearer token. Any client holding the
 A research agent.
 
 - It fans out to three parallel subagents, each a durable task in its own conversation.
-- Safe tools: `search` over a built-in corpus by default, with an optional Exa backend behind `SEARCH_BACKEND=exa`.
+- Safe tools: `search` over the web through Exa when deployed (`SEARCH_BACKEND=exa`, key in the `EXA_API_KEY` Worker secret), and over a built-in corpus in tests and keyless local runs (`SEARCH_BACKEND=corpus`).
 - Unsafe tool: `charge_credits`, fake credits only, writing a Ledger entry that records the tool task id and is idempotent on its intent (conversation, credits, memo), so a model retrying an interrupted charge gets the existing entry.
 - Fault tools, first-class in the registry and labelled in the UI: `slow_search` (staged, streaming progress) and `loop_forever` (recruits subagent conversations until something stops it).
 

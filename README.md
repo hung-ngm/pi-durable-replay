@@ -8,7 +8,7 @@ Pi Durable is experimental, so its APIs may still change.
 
 ## What you can try
 
-- Ask the research agent a question: it fans out to three parallel subagent conversations, searches a built-in corpus, and synthesizes an answer with citations.
+- Ask the research agent a question: it fans out to three parallel subagent conversations, searches the web through Exa (or a built-in corpus in tests and local runs), and synthesizes an answer with citations.
 - Watch every run as a live task graph in the Activity panel, and kill work at four scopes: a tool, a run, a conversation, or the whole session.
 - Set per-run budgets (default 100,000 tokens or 30 turns) in the Control Panel. A run that crosses one is budget-killed, and the panel names which budget fired. Budget edits apply to the next run only.
 - Fail a run, then use Replay on an earlier entry: Fork Replay carries completed tool results forward as history, so safe tools never run again, and the unsafe `charge_credits` tool stays blocked until you approve it in the Control Panel. The Ledger beside the transcript proves each charge landed exactly once.
@@ -76,10 +76,12 @@ bun run preview # preview the production build locally
 Deployment runs in GitHub Actions (`.github/workflows/deploy.yml`), not from a local Wrangler: every push to `main` runs the checks and the test suite, then deploys. One-time setup, all in your own browser sessions:
 
 1. In the Cloudflare dashboard, create an account API token with the **Edit Cloudflare Workers** permission policy, scoped to your account, and note your account ID.
-2. In this repo's GitHub settings (Secrets and variables > Actions), add four repository secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `OPENAI_API_KEY` (your existing provider key), and `CONTROL_TOKEN` (a password you choose for this app).
+2. In this repo's GitHub settings (Secrets and variables > Actions), add five repository secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `OPENAI_API_KEY` (your existing provider key), `CONTROL_TOKEN` (a password you choose for this app), and `EXA_API_KEY` (the key for the agent's web search).
 3. Push to `main`, or run the workflow manually from the Actions tab.
 
-The workflow uploads `OPENAI_API_KEY` and `CONTROL_TOKEN` as Worker secrets in the same operation as the deploy (`wrangler deploy --secrets-file`), from a file that exists only in the runner's temp directory.
+The workflow uploads `OPENAI_API_KEY`, `CONTROL_TOKEN`, and `EXA_API_KEY` as Worker secrets in the same operation as the deploy (`wrangler deploy --secrets-file`), from a file that exists only in the runner's temp directory.
+
+The deployed Worker searches Exa (`SEARCH_BACKEND` is `exa` in `wrangler.jsonc`). Tests pin `SEARCH_BACKEND=corpus` so they run offline. For local `wrangler dev` without an Exa key, put `SEARCH_BACKEND=corpus` in `.dev.vars`; otherwise every search fails with a message naming the missing secret.
 
 Scripts send `Authorization: Bearer <CONTROL_TOKEN>` on session creation and on the session WebSocket. The browser UI prompts once, posts the token to `/api/auth`, and receives an `HttpOnly; Secure; SameSite=Strict` cookie holding a digest of the token, valid for 30 days; every tab and every WebSocket upgrade send it automatically, and the token never appears in a URL or in page storage. Rotating `CONTROL_TOKEN` signs every browser out. A deployment must always set CONTROL_TOKEN: without it the API is open, which is only acceptable for local development.
 

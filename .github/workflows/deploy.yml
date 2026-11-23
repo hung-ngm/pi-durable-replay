@@ -9,7 +9,8 @@ name: Deploy Worker
 #   CLOUDFLARE_ACCOUNT_ID  the account to deploy to
 #   OPENAI_API_KEY         the agent's provider key (becomes a Worker secret)
 #   CONTROL_TOKEN          the app's own bearer token (becomes a Worker secret)
-# The two app secrets are uploaded with the deploy via --secrets-file, per
+#   EXA_API_KEY            the research agent's web search key (becomes a Worker secret)
+# The three app secrets are uploaded with the deploy via --secrets-file, per
 # https://developers.cloudflare.com/workers/configuration/secrets/ - the file
 # exists only in the runner's temp directory and is deleted in the same job.
 
@@ -51,9 +52,10 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           CONTROL_TOKEN: ${{ secrets.CONTROL_TOKEN }}
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
         run: |
           missing=""
-          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID OPENAI_API_KEY CONTROL_TOKEN; do
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID OPENAI_API_KEY CONTROL_TOKEN EXA_API_KEY; do
             if [ -z "${!name}" ]; then missing="$missing $name"; fi
           done
           if [ -n "$missing" ]; then
@@ -65,11 +67,13 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           CONTROL_TOKEN: ${{ secrets.CONTROL_TOKEN }}
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
           SECRETS_FILE: ${{ runner.temp }}/worker-secrets.json
         run: |
           bun -e 'await Bun.write(process.env.SECRETS_FILE, JSON.stringify({
             OPENAI_API_KEY: process.env.OPENAI_API_KEY,
             CONTROL_TOKEN: process.env.CONTROL_TOKEN,
+            EXA_API_KEY: process.env.EXA_API_KEY,
           }))'
 
       - name: Deploy
