@@ -1,0 +1,5 @@
+# Resume and Fork Replay are the only replay modes
+
+Status: accepted, 23 Nov 2026
+
+The product has exactly two ways to continue work, and they are never blurred. Resume continues the same run from its last committed checkpoint, keeping its identity. Fork Replay creates a new conversation forked at a chosen entry, carries completed tool results forward as committed entries, and never re-runs an unsafe tool without a fresh explicit approval. There is deliberately no third mode that re-executes a whole run from the top. That mode is the failure the product exists to prevent, because a full re-execution re-fires effects that already happened, and its safety would depend on every tool author remembering to make every effect idempotent. Here, safety is structural instead. A tool's intent and replay policy are committed before it runs, safe tools may rerun, unsafe tools are reported interrupted, and the sample agent's charge writes a ledger entry keyed by its tool task id, so even a mistaken second firing is a no-op read against committed state.
