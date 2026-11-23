@@ -88,12 +88,12 @@ export function ActivityPanel({
     const owned = children.get(node.id) ?? [];
     return (
       <li key={node.id}>
-        <article className="activity-task">
-          <header>
-            <strong className="font-medium">{node.kind}</strong>
-            <span className="text-muted-foreground">#{node.id}</span>
+        <article className="grid min-w-0 gap-1.5 border-b pb-3 [&_a]:[overflow-wrap:anywhere]">
+          <header className="flex items-baseline justify-between gap-3">
+            <strong className="font-medium [overflow-wrap:anywhere]">{node.kind}</strong>
+            <span className="text-muted-foreground flex-none text-sm tabular-nums">#{node.id}</span>
           </header>
-          <p className="activity-task-status text-muted-foreground">{taskStatus(node)}</p>
+          <p className="text-muted-foreground text-sm">{taskStatus(node)}</p>
           {onAbortTask === undefined || node.abortRequested ? null : (
             <p>
               <Button
@@ -106,20 +106,23 @@ export function ActivityPanel({
             </p>
           )}
           {node.blocked === undefined ? null : (
-            <p className="activity-task-blocked font-semibold">{blockedReasons[node.blocked]}</p>
+            <p className="text-sm font-semibold">{blockedReasons[node.blocked]}</p>
           )}
-          <p className="activity-task-conversation">
+          <p className="text-sm">
             {conversationLink(node.conversationId, `Conversation #${node.conversationId}`)}
             {node.owner === undefined ? null : ` · Owner task #${node.owner}`}
           </p>
           {node.background || node.abortRequested ? (
-            <ul className="activity-task-flags" aria-label="Task flags">
+            <ul
+              className="flex flex-wrap gap-1.5 text-sm [&>li]:rounded-sm [&>li]:border [&>li]:px-1.5 [&>li]:py-0.5"
+              aria-label="Task flags"
+            >
               {node.background ? <li>Background</li> : null}
               {node.abortRequested ? <li>Aborting</li> : null}
             </ul>
           ) : null}
           {node.conversations.length === 0 ? null : (
-            <p className="activity-task-owned">
+            <p className="text-sm">
               Owns{" "}
               {node.conversations.map((conversationId, index) => (
                 <span key={conversationId}>
@@ -132,7 +135,7 @@ export function ActivityPanel({
         </article>
         {owned.length === 0 ? null : (
           <ol
-            className="activity-tree activity-tree--nested"
+            className="ms-2.5 mt-2 grid gap-2 border-s ps-4"
             aria-label={`Children of task ${node.id}`}
           >
             {owned.map(task)}
@@ -145,7 +148,7 @@ export function ActivityPanel({
   const countLabel = `${nodes.length} active task${nodes.length === 1 ? "" : "s"}`;
   return (
     <aside className={className} id="activity-panel" aria-labelledby="activity-heading">
-      <header className="activity-header">
+      <header className="flex items-center justify-between gap-4 border-b p-4">
         <div>
           <h2 id="activity-heading">Activity</h2>
           <p className="text-muted-foreground text-sm">{countLabel}</p>
@@ -154,13 +157,13 @@ export function ActivityPanel({
           Close
         </Button>
       </header>
-      <div className="activity-content">
+      <div className="min-h-0 overflow-y-auto overscroll-contain p-4">
         {graph === undefined ? (
           <p className="text-muted-foreground text-sm">Loading activity…</p>
         ) : roots.length === 0 ? (
           <p className="text-muted-foreground text-sm">No active tasks</p>
         ) : (
-          <ol className="activity-tree" aria-label="Active task graph">
+          <ol className="grid gap-3" aria-label="Active task graph">
             {roots.map(task)}
           </ol>
         )}

@@ -329,6 +329,8 @@ As built: a name-to-body table in `tools/ToolCard.tsx` replaces `defineToolkit`,
 - [ ] Live: ask a question whose answer has a numbered list and links. Passes when the list renders as `<ol>` and the links open in a new tab.
 - [ ] Perf: client JS gzip ≤ 280,000 bytes in total (300,000 hard stop, operator sign-off). CSS gzip ≤ 15,000. Measure the markdown delta and name it in the commit.
 
+As built: assistant text renders through `markdown-text.tsx`; operator prompts, notes, and events stay plain text, as the example renders user messages, so `MessageText` stays for them. Links open in a new tab and say so to screen readers. The Activity panel rules moved into classes and `styles.css` is deleted. JS gzip 296,574, which is 52,779 over PR6 and over the 280,000 budget: react-markdown with micromark is about 39,000 and `remark-gfm` about 13,700 (measured by building without it, 282,895). The operator signed off under the 300,000 hard stop. CSS 9,027.
+
 ---
 
 ## What stays unproven

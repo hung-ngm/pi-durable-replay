@@ -49,7 +49,7 @@ Modules:
 - `src/replay.ts` (new): Fork Replay in one function. Reads committed entries and tool task records, forks at the chosen entry, writes a `ReplayDoc` on the new conversation naming source conversation, fork entry, and carried tool results.
 - `src/agent.ts` (renamed from `chat.ts`): model composition via pi-ai. OpenAI provider, default model as shipped by the fork, changeable per conversation.
 - `src/tools.ts` (replaced): `search`, `charge_credits`, `slow_search`, `loop_forever`. Demo tools from the fork are deleted.
-- Client (React): the chat surfaces render through assistant-ui over the session reducer (ADR 0005). `ActivityPanel` gains abort buttons and budget state. One new `ControlPanel` holds budgets, fault injection, replay, the Ledger, and usage.
+- Client (React): the chat surfaces render through assistant-ui over the session reducer (ADR 0005), styled with Tailwind v4 and copied shadcn components (ADR 0006). The blocked `charge_credits` call in a Fork Replay carries the **Approve charge** card. `ActivityPanel` gains abort buttons and budget state. One new `ControlPanel` holds budgets, fault injection, replay, the Ledger, and usage.
 
 Data shapes (five, plus the Ledger):
 
@@ -215,7 +215,7 @@ sequenceDiagram
   R->>F: ReplayDoc {source, forkEntryId, carried, pendingUnsafeApproval}
   F->>Gate: model calls charge_credits
   Gate-->>F: blocked while pendingUnsafeApproval
-  Op->>S: run.approveUnsafe
+  Op->>S: run.approveUnsafe (Approve charge on the blocked call)
   S->>F: ReplayDoc.pendingUnsafeApproval = false
   F->>Gate: model calls charge_credits
   Gate-->>F: allowed, one new Ledger entry

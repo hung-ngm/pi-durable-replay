@@ -26,6 +26,7 @@ import {
   disclosureContent,
   disclosureTrigger,
 } from "./components/assistant-ui/tool-fallback.tsx";
+import { MarkdownText } from "./components/assistant-ui/markdown-text.tsx";
 import { ToolGroup } from "./components/assistant-ui/tool-group.tsx";
 import { TooltipIconButton } from "./components/assistant-ui/tooltip-icon-button.tsx";
 import { Button } from "./components/ui/button.tsx";
@@ -375,7 +376,7 @@ function Part({
 }) {
   switch (part.type) {
     case "text":
-      return <MessageText text={part.text} />;
+      return <TextPart text={part.text} />;
     case "reasoning":
       return (
         <Disclosure label="Thinking">
@@ -465,6 +466,11 @@ function Disclosure({ label, children }: { readonly label: string; readonly chil
       <CollapsibleContent className={disclosureContent}>{children}</CollapsibleContent>
     </Collapsible>
   );
+}
+
+function TextPart({ text }: { readonly text: string }) {
+  const assistant = useAuiState((s) => s.message.role === "assistant");
+  return assistant ? <MarkdownText /> : <MessageText text={text} />;
 }
 
 function MessageText({ text }: { readonly text: string }) {
