@@ -39,6 +39,7 @@ export function createAgentHarnessOptions(
   });
   const registry = createRegistry();
   registry.install(agentExtension);
+  for (const extension of tools.childExtensions) registry.install(extension);
   const defaultAgent = {
     model: { provider: "openai", modelId: "gpt-6-luna" },
     thinkingLevel: "off" as const,

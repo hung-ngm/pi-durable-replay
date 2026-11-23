@@ -97,8 +97,12 @@ export interface AgentTools {
   readonly loopForeverTool: ToolRegistration;
   readonly crashLoopTool: ToolRegistration;
   readonly all: readonly ToolRegistration[];
-  /** Extension carrying only `search`, installed on research subagent conversations. */
-  readonly searchExtension: Extension;
+  /**
+   * Extensions selected by name on the conversations the tools create: `search` for
+   * research subagents, `loop_forever` for loop children. The registry must install
+   * them, or those conversations are offered no tools.
+   */
+  readonly childExtensions: readonly Extension[];
 }
 
 export function createTools(config: ToolConfig): AgentTools {
@@ -374,6 +378,6 @@ export function createTools(config: ToolConfig): AgentTools {
       loopForeverTool,
       crashLoopTool,
     ],
-    searchExtension,
+    childExtensions: [searchExtension, loopExtension],
   };
 }

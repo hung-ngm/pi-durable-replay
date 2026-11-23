@@ -43,6 +43,69 @@ describe("corpus search", () => {
 });
 
 describe("research agent", () => {
+  it("offers each research subagent the search tool, and its searches return corpus hits", async () => {
+    const offered: string[][] = [];
+    const childTurn: FauxResponseStep = (request) => {
+      // pi-ai carries tool declarations in the transcript's system messages.
+      const names = new Set<string>();
+      for (const message of request.messages) {
+        if (message.role !== "system") continue;
+        for (const tool of message.toolsAdded ?? []) names.add(tool.name);
+        for (const tool of message.toolsRemoved ?? []) names.delete(tool.name);
+      }
+      offered.push([...names]);
+      const last = request.messages[request.messages.length - 1];
+      return last?.role === "toolResult"
+        ? fauxAssistantMessage([
+            fauxText(`Answer from ${JSON.stringify(last.content).slice(0, 80)}`),
+          ])
+        : fauxAssistantMessage([fauxToolCall("search", { query: "kill switches" })], {
+            stopReason: "toolUse",
+          });
+    };
+    const { harness, root } = await openAgent([
+      fauxAssistantMessage([fauxToolCall("research", { question: "How do kill switches work?" })], {
+        stopReason: "toolUse",
+      }),
+      childTurn,
+      childTurn,
+      childTurn,
+      childTurn,
+      childTurn,
+      childTurn,
+      fauxAssistantMessage([fauxText("Synthesis.")]),
+    ]);
+    try {
+      const submission = await root.submit(
+        { type: "input", content: "Research how kill switches work" },
+        context,
+      );
+      expect((await submission.wait(context)).status).toBe("done");
+      expect(offered).toHaveLength(6);
+      expect(offered.every((names) => names.includes("search"))).toBe(true);
+
+      const searchResults = await harness.commit(async (tx) => {
+        const children = (await tx.scanConversations({}, 100)).items.filter(
+          (conversation) => conversation.owner !== undefined,
+        );
+        const results = [];
+        for (const child of children) {
+          const page = await tx.scanEntries({ conversationId: child.id }, 100);
+          for (const entry of page.items)
+            for (const message of entry.model ?? [])
+              if (message.role === "toolResult" && message.toolName === "search")
+                results.push(message);
+        }
+        return results;
+      }, context);
+      expect(searchResults).toHaveLength(3);
+      expect(searchResults.every((result) => !result.isError)).toBe(true);
+      expect(JSON.stringify(searchResults)).toContain("corpus:");
+    } finally {
+      await harness.close(context);
+    }
+  });
+
   it("fans out to three subagent conversations and synthesizes their answers", async () => {
     const searchCall = fauxAssistantMessage(
       [fauxToolCall("search", { query: "kill switches budgets" })],
