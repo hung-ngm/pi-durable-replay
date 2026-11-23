@@ -103,7 +103,7 @@ describe("session recovery", () => {
 
     let status: string | undefined;
     const wake = await exports.default.fetch(`https://example.com/api/sessions/${sessionId}`, {
-      headers: { Upgrade: "websocket" },
+      headers: { Upgrade: "websocket", Authorization: "Bearer test-control-token" },
     });
     expect(wake.status).toBe(101);
     wake.webSocket!.accept();

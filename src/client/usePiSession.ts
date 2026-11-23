@@ -10,6 +10,7 @@ import {
   type TaskGraph,
 } from "@earendil-works/pi-durable";
 import PartySocket from "partysocket";
+import { controlToken } from "./control-token.ts";
 import {
   MAX_ENTRY_PAGE,
   MAX_PROMPT_CHARACTERS,
@@ -133,7 +134,7 @@ export function usePiSession(
       party: "sessions",
       prefix: "api",
       room: sessionId,
-      query: { username },
+      query: { username, token: controlToken() },
       maxEnqueuedMessages: 16,
       shouldReconnectOnClose: (event) => !terminal && !terminalProtocolClose(event.code),
     });

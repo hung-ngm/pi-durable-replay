@@ -1,5 +1,6 @@
 import { type SubmitEvent, useState } from "react";
 import { ChatSession } from "./ChatSession.tsx";
+import { controlToken } from "./control-token.ts";
 
 /** Single-user product (SPEC Q8): one operator, no accounts, no join flow. */
 export const OPERATOR_USERNAME = "operator";
@@ -35,7 +36,10 @@ function LandingPage() {
     setCreating(true);
     setError(undefined);
     try {
-      const response = await fetch("/api/sessions", { method: "POST" });
+      const response = await fetch("/api/sessions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${controlToken()}` },
+      });
       if (!response.ok) throw new Error(`Session creation failed (${response.status})`);
       const result = (await response.json()) as { readonly url?: unknown };
       if (typeof result.url !== "string")

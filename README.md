@@ -61,15 +61,16 @@ bun run preview # preview the production build locally
 
 ## Deploy
 
-Authenticate Wrangler, store the API key as a Worker secret, then deploy:
+Authenticate Wrangler, store the API key and the control token as Worker secrets, then deploy:
 
 ```sh
-bunx wrangler login
-bunx wrangler secret put OPENAI_API_KEY
+bun x wrangler login
+bun x wrangler secret put OPENAI_API_KEY
+bun x wrangler secret put CONTROL_TOKEN
 bun run deploy
 ```
 
-Before exposing a deployment, add authentication, authorization, and rate limiting. Anyone who can reach this sample can create sessions that use your model credentials.
+The API requires `Authorization: Bearer <CONTROL_TOKEN>` on session creation and the same token as a `token` query parameter on the session WebSocket. The browser UI prompts for it once and keeps it in session storage only. A deployment must always set CONTROL_TOKEN: without it the API is open, which is only acceptable for local development.
 
 ## Further reading
 

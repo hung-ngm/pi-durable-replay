@@ -12,7 +12,9 @@ export default defineConfig({
   plugins: [
     cloudflareTest({
       wrangler: { configPath: "./wrangler.jsonc" },
-      miniflare: { bindings: { OPENAI_API_KEY: "test-openai-key" } },
+      miniflare: {
+        bindings: { OPENAI_API_KEY: "test-openai-key", CONTROL_TOKEN: "test-control-token" },
+      },
     }),
   ],
 });

@@ -47,6 +47,7 @@ const sessionSocketUrl = (sessionId: string, username: string, clientId: string)
   const url = new URL(`https://example.com/api/sessions/${sessionId}`);
   url.searchParams.set("username", username);
   url.searchParams.set("_pk", clientId);
+  url.searchParams.set("token", "test-control-token");
   return url.href;
 };
 
@@ -174,11 +175,11 @@ describe("chat application", () => {
     await configureOfflineModel(sessionId);
     const aliceResponse = await exports.default.fetch(
       sessionSocketUrl(sessionId, "Alice", "alice-client"),
-      { headers: { Upgrade: "websocket" } },
+      { headers: { Upgrade: "websocket", Authorization: "Bearer test-control-token" } },
     );
     const bobResponse = await exports.default.fetch(
       sessionSocketUrl(sessionId, "Bob]\n[Assistant", "bob-client"),
-      { headers: { Upgrade: "websocket" } },
+      { headers: { Upgrade: "websocket", Authorization: "Bearer test-control-token" } },
     );
     expect(aliceResponse.status).toBe(101);
     expect(bobResponse.status).toBe(101);
@@ -247,7 +248,7 @@ describe("chat application", () => {
     const stub = env.SESSIONS.getByName(sessionId);
     const response = await exports.default.fetch(
       sessionSocketUrl(sessionId, "Alice", "heartbeat-client"),
-      { headers: { Upgrade: "websocket" } },
+      { headers: { Upgrade: "websocket", Authorization: "Bearer test-control-token" } },
     );
     const socket = response.webSocket!;
     const messages = jsonMessages(socket);
@@ -276,7 +277,7 @@ describe("chat application", () => {
     await configureOfflineModel(sessionId);
     const response = await exports.default.fetch(
       sessionSocketUrl(sessionId, "Alice", "retry-client"),
-      { headers: { Upgrade: "websocket" } },
+      { headers: { Upgrade: "websocket", Authorization: "Bearer test-control-token" } },
     );
     const socket = response.webSocket!;
     const messages = jsonMessages(socket);
@@ -314,7 +315,7 @@ describe("chat application", () => {
     await evictDurableObject(env.SESSIONS.getByName(sessionId));
     const reopened = await exports.default.fetch(
       sessionSocketUrl(sessionId, "Alice", "retry-client-2"),
-      { headers: { Upgrade: "websocket" } },
+      { headers: { Upgrade: "websocket", Authorization: "Bearer test-control-token" } },
     );
     const reopenedSocket = reopened.webSocket!;
     const reopenedMessages = jsonMessages(reopenedSocket);
@@ -333,7 +334,7 @@ describe("chat application", () => {
     });
     const response = await exports.default.fetch(
       sessionSocketUrl(sessionId, "Alice", "create-retry-client"),
-      { headers: { Upgrade: "websocket" } },
+      { headers: { Upgrade: "websocket", Authorization: "Bearer test-control-token" } },
     );
     const socket = response.webSocket!;
     const messages = jsonMessages(socket);
@@ -380,7 +381,7 @@ describe("chat application", () => {
 
     const reopened = await exports.default.fetch(
       sessionSocketUrl(sessionId, "Alice", "create-retry-client-2"),
-      { headers: { Upgrade: "websocket" } },
+      { headers: { Upgrade: "websocket", Authorization: "Bearer test-control-token" } },
     );
     const reopenedSocket = reopened.webSocket!;
     const reopenedMessages = jsonMessages(reopenedSocket);
@@ -407,6 +408,7 @@ describe("chat application", () => {
   it("creates an opaque session URL", async () => {
     const response = await exports.default.fetch("https://example.com/api/sessions", {
       method: "POST",
+      headers: { Authorization: "Bearer test-control-token" },
     });
 
     expect(response.status).toBe(201);
@@ -418,7 +420,7 @@ describe("chat application", () => {
   it("opens a session WebSocket with the root conversation", async () => {
     const response = await exports.default.fetch(
       "https://example.com/api/sessions/00000000-0000-4000-8000-000000000001",
-      { headers: { Upgrade: "websocket" } },
+      { headers: { Upgrade: "websocket", Authorization: "Bearer test-control-token" } },
     );
 
     expect(response.status).toBe(101);
@@ -467,7 +469,7 @@ describe("chat application", () => {
     const sessionId = "websocket-eviction";
     const response = await exports.default.fetch(
       sessionSocketUrl(sessionId, "Alice", "eviction-client"),
-      { headers: { Upgrade: "websocket" } },
+      { headers: { Upgrade: "websocket", Authorization: "Bearer test-control-token" } },
     );
     const socket = response.webSocket!;
     const messages = jsonMessages(socket);
@@ -514,11 +516,11 @@ describe("chat application", () => {
     const sessionId = "typing-presence-eviction";
     const aliceResponse = await exports.default.fetch(
       sessionSocketUrl(sessionId, "Alice", "typing-alice"),
-      { headers: { Upgrade: "websocket" } },
+      { headers: { Upgrade: "websocket", Authorization: "Bearer test-control-token" } },
     );
     const bobResponse = await exports.default.fetch(
       sessionSocketUrl(sessionId, "Bob", "typing-bob"),
-      { headers: { Upgrade: "websocket" } },
+      { headers: { Upgrade: "websocket", Authorization: "Bearer test-control-token" } },
     );
     const aliceSocket = aliceResponse.webSocket!;
     const bobSocket = bobResponse.webSocket!;
@@ -563,7 +565,7 @@ describe("chat application", () => {
   it("closes the WebSocket after a malformed command frame", async () => {
     const response = await exports.default.fetch(
       "https://example.com/api/sessions/malformed-frame",
-      { headers: { Upgrade: "websocket" } },
+      { headers: { Upgrade: "websocket", Authorization: "Bearer test-control-token" } },
     );
     const socket = response.webSocket!;
     const messages = jsonMessages(socket);
@@ -585,7 +587,7 @@ describe("chat application", () => {
   it("rejects oversized command frames before parsing", async () => {
     const response = await exports.default.fetch(
       "https://example.com/api/sessions/oversized-frame",
-      { headers: { Upgrade: "websocket" } },
+      { headers: { Upgrade: "websocket", Authorization: "Bearer test-control-token" } },
     );
     const socket = response.webSocket!;
     const messages = jsonMessages(socket);
@@ -640,7 +642,7 @@ describe("chat application", () => {
     const entryId = await seedUserEntry(sessionId, "Fork this");
 
     const response = await exports.default.fetch(`https://example.com/api/sessions/${sessionId}`, {
-      headers: { Upgrade: "websocket" },
+      headers: { Upgrade: "websocket", Authorization: "Bearer test-control-token" },
     });
     const socket = response.webSocket!;
     const messages = jsonMessages(socket);
@@ -726,7 +728,7 @@ describe("chat application", () => {
     const sessionId = "entries-paging";
     const input = await seedUserEntry(sessionId, "Page me");
     const response = await exports.default.fetch(`https://example.com/api/sessions/${sessionId}`, {
-      headers: { Upgrade: "websocket" },
+      headers: { Upgrade: "websocket", Authorization: "Bearer test-control-token" },
     });
     const socket = response.webSocket!;
     const messages = jsonMessages(socket);
@@ -799,7 +801,7 @@ describe("chat application", () => {
     );
 
     const response = await exports.default.fetch(`https://example.com/api/sessions/${sessionId}`, {
-      headers: { Upgrade: "websocket" },
+      headers: { Upgrade: "websocket", Authorization: "Bearer test-control-token" },
     });
     const socket = response.webSocket!;
     const messages = jsonMessages(socket);
