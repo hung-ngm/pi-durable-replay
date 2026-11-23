@@ -23,7 +23,9 @@ const taskStatus = (node: TaskGraphNode): string => {
     case "running":
       return `Running · ${state.phase}`;
     case "sleeping":
-      return `Sleeping until ${new Date(state.until).toLocaleString()} · ${state.phase}`;
+      return state.until === undefined
+        ? `Sleeping · ${state.phase}`
+        : `Sleeping until ${new Date(state.until).toLocaleString()} · ${state.phase}`;
     case "waiting":
       return `Waiting for ${state.on.map((id) => `#${id}`).join(", ")} · ${state.policy === "failFast" ? "fail fast" : "all settled"}`;
     case "completing":

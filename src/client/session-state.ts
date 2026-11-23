@@ -74,7 +74,7 @@ export interface LiveConversation {
 export interface ToolProgress {
   readonly callId: string;
   readonly name: string;
-  readonly status: "pending" | "running" | "done";
+  readonly status: "pending" | "running" | "sleeping" | "waiting" | "done";
   readonly output?: string;
   readonly details?: JsonValue;
   readonly diagnostics?: readonly ToolDiagnostic[];
