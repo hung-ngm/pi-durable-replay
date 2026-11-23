@@ -219,4 +219,54 @@ describe("replay (SPEC tests 3 and 4)", () => {
       await harness.close(context);
     }
   }, 60_000);
+
+  it("Fork Replay before a landed charge's result still gates the charge", async () => {
+    const { harness, root } = await openAgent([
+      fauxAssistantMessage(
+        [fauxToolCall("charge_credits", { credits: 10, memo: "premium depth" })],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage([fauxText("Charged.")]),
+      // The fork redoes the part after the tool call, and the model charges again.
+      fauxAssistantMessage(
+        [fauxToolCall("charge_credits", { credits: 10, memo: "premium depth" })],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage([fauxText("Blocked, waiting for approval.")]),
+    ]);
+    try {
+      const run = await root.submit({ type: "input", content: "Charge 10 credits." }, context);
+      await run.wait(context);
+      expect(await readLedger(harness)).toHaveLength(1);
+
+      // Fork at the assistant entry that made the call: the charge's result is not
+      // in the carried history, but the charge already happened.
+      const callEntryId = await harness.commit(async (tx) => {
+        const page = await tx.scanEntries({ conversationId: root.id }, 100);
+        return page.items.find((entry) =>
+          (entry.model ?? []).some(
+            (message) =>
+              message.role === "assistant" &&
+              message.content.some(
+                (block) => block.type === "toolCall" && block.name === "charge_credits",
+              ),
+          ),
+        )?.id;
+      }, context);
+      if (callEntryId === undefined) throw new Error("charge call entry missing");
+
+      const fork = await replayFork(harness, root.id, callEntryId, context);
+      expect(fork.carried.map((entry) => entry.name)).not.toContain("charge_credits");
+      expect(fork.pendingUnsafeApproval).toBe(true);
+
+      const forkConversation = await harness.conversation(fork.conversationId, context);
+      if (forkConversation === undefined) throw new Error("fork conversation missing");
+      await forkConversation.configure({ model: { provider: "faux", modelId: "faux-1" } }, context);
+      const forkRun = await forkConversation.submit({ type: "input", content: "Finish." }, context);
+      await forkRun.wait(context);
+      expect(await readLedger(harness)).toHaveLength(1);
+    } finally {
+      await harness.close(context);
+    }
+  }, 60_000);
 });

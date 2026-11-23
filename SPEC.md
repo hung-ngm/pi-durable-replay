@@ -45,7 +45,7 @@ Modules:
 
 - `src/session.ts` (from the fork, kept): the DO host. Hibernating WebSockets, serialized alarm arming, view restore after eviction, `resume()` on wake.
 - `src/protocol.ts` (extended): existing commands plus `task.abort`, `conversation.abort`, `run.replayFork`, `control.setBudgets`, `fault.inject`. Strict validation, as upstream.
-- `src/control.ts` (new): `ControlDoc` via `defineDoc` (budgets, kill state), plus a hook that reads Control before each tool round and blocks or aborts at a budget crossing. Approvals use hook memos, so an approval is never asked twice across a crash.
+- `src/control.ts` (new): `ControlDoc` via `defineDoc` (budgets, kill state), plus a hook that reads Control before each tool round and blocks or aborts at a budget crossing. An approval is recorded durably in the fork's `ReplayDoc`, so it is never asked twice across a crash. A fork whose source conversation charged (per the Ledger) arms the approval gate, whether or not the charge's result is in the carried history.
 - `src/replay.ts` (new): Fork Replay in one function. Reads committed entries and tool task records, forks at the chosen entry, writes a `ReplayDoc` on the new conversation naming source conversation, fork entry, and carried tool results.
 - `src/agent.ts` (renamed from `chat.ts`): model composition via pi-ai. OpenAI provider, default model as shipped by the fork, changeable per conversation.
 - `src/tools.ts` (replaced): `search`, `charge_credits`, `slow_search`, `loop_forever`. Demo tools from the fork are deleted.

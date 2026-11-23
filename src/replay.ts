@@ -8,10 +8,7 @@ import {
   type EntryId,
   type Harness,
 } from "@earendil-works/pi-durable";
-import { CHARGE_CREDITS_TOOL_NAME } from "./tools.ts";
-
-/** Tools whose effects must never be re-fired in a replay without fresh approval. */
-export const UNSAFE_TOOLS: ReadonlySet<string> = new Set([CHARGE_CREDITS_TOOL_NAME]);
+import { CHARGE_CREDITS_TOOL_NAME, LedgerDoc } from "./tools.ts";
 
 export type CarriedToolResult = {
   callId: string;
@@ -23,7 +20,7 @@ export type ReplayState = {
   forkEntryId: number;
   /** Tool results committed before the fork point, carried forward as history. */
   carried: CarriedToolResult[];
-  /** True when a carried result came from an unsafe tool and no approval is recorded yet. */
+  /** True when the source conversation charged and no approval is recorded yet. */
   pendingUnsafeApproval: boolean;
   approvedAt?: number;
 };
@@ -58,7 +55,9 @@ export type ForkReplayResult = {
  * Fork Replay: fork the source conversation at `entryId` (the entry before the
  * failure), and write the ReplayDoc naming the source, the fork entry, and every
  * tool result carried forward. Carried results are history in the fork, so the safe
- * tools behind them never run again; an unsafe tool among them arms the approval gate.
+ * tools behind them never run again. The approval gate arms from the ledger, not
+ * from the carried results: a charge whose result was never committed, or sits
+ * after the fork point, still happened, and the fork must not repeat it unasked.
  */
 export async function replayFork(
   harness: Harness,
@@ -86,7 +85,10 @@ export async function replayFork(
     const fork = await tx.forkConversation(sourceConversationId, entryId, {
       ownership: { kind: "ownerless" },
     });
-    const pendingUnsafeApproval = carried.some((result) => UNSAFE_TOOLS.has(result.name));
+    const ledger = await tx.doc(LedgerDoc);
+    const pendingUnsafeApproval = ledger.entries.some(
+      (entry) => entry.conversationId === (sourceConversationId as number),
+    );
     const doc = await tx.doc(ReplayDoc, fork.id);
     doc.sourceConversationId = sourceConversationId as number;
     doc.forkEntryId = entryId as number;
@@ -128,24 +130,19 @@ export async function approveUnsafe(
 
 /**
  * The approval gate: a beforeTool hook on every tool call. In a Fork Replay whose
- * carried results include an unsafe tool, that tool is blocked until the operator
- * approves it (approveUnsafe). The ask is recorded in the asking task's memo -
- * first-write-wins, shared by hooks and the task - so a crash and a rerun never ask
- * twice; the block itself is the ask, and the Control Panel is where it is answered.
+ * source conversation charged, charge_credits is blocked until the operator approves
+ * it (approveUnsafe). The approval is durable in the ReplayDoc, so a crash never asks
+ * twice; the block is the ask, and the Control Panel is where it is answered.
  */
 export const unsafeGateHook = hook(ToolTask, {
   beforeTool: async (call, api, context) => {
-    if (!UNSAFE_TOOLS.has(call.name)) return undefined;
+    if (call.name !== CHARGE_CREDITS_TOOL_NAME) return undefined;
     const replay = await api.snapshot(ReplayDoc, api.conversationId, context);
     if (replay === undefined || !replay.pendingUnsafeApproval) return undefined;
-    const asked = await api.memo<boolean>("unsafe-approval-asked", context);
-    if (asked === undefined) {
-      await api.memo("unsafe-approval-asked", true, context);
-    }
     return {
       block:
-        `${call.name} is blocked in this replay: a carried ${call.name} result from ` +
-        `conversation #${replay.sourceConversationId} needs fresh approval before it can run again. ` +
+        `${call.name} is blocked in this replay: conversation #${replay.sourceConversationId} ` +
+        "already charged, so a charge here needs fresh approval. " +
         "The operator can approve it in the Control Panel.",
     };
   },
