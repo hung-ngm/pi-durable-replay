@@ -11,6 +11,8 @@ import type {
   TranscriptView,
 } from "@earendil-works/pi-durable";
 import { CompactionEntry, ResetEntry, ToolResultEntry } from "@earendil-works/pi-durable";
+import { REPLAY_BLOCK_MARKER } from "../protocol.ts";
+import type { ReplayState } from "../replay.ts";
 
 type Part = Exclude<ThreadMessageLike["content"], string>[number];
 type ToolPart = Extract<Part, { readonly type: "tool-call" }>;
@@ -356,6 +358,35 @@ function messageText(message: Message): string {
     default:
       return contentText(message.content);
   }
+}
+
+const isBlockedCharge = (part: Part): part is ToolPart =>
+  part.type === "tool-call" &&
+  part.isError === true &&
+  ((part.artifact ?? {}) as ToolArtifact).diagnostics?.some(
+    ({ code, message }) => code === "blocked" && message.includes(REPLAY_BLOCK_MARKER),
+  ) === true;
+
+export function withReplayApproval(
+  messages: readonly PiMessage[],
+  conversationId: number,
+  replay: ReplayState | undefined,
+): readonly PiMessage[] {
+  if (replay === undefined) return messages;
+  const approval = {
+    id: `replay:${conversationId}`,
+    approved: replay.approvedAt === undefined ? undefined : true,
+  };
+  return messages.map((message) =>
+    message.content.some(isBlockedCharge)
+      ? {
+          ...message,
+          content: message.content.map((part) =>
+            isBlockedCharge(part) ? { ...part, approval } : part,
+          ),
+        }
+      : message,
+  );
 }
 
 export function contentText(content: string | readonly unknown[]): string {

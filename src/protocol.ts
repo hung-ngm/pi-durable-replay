@@ -14,6 +14,9 @@ import type {
   TaskGraphState,
 } from "@earendil-works/pi-durable";
 
+/** Marks the tool result of a charge that the Fork Replay gate blocked. */
+export const REPLAY_BLOCK_MARKER = "is blocked in this replay";
+
 export const ROOT_CONVERSATION_ID = 1;
 export const MAX_PROMPT_CHARACTERS = 100_000;
 export const MAX_REQUEST_ID_CHARACTERS = 256;

@@ -8,7 +8,6 @@ import {
   ThreadPrimitive,
   useAuiState,
 } from "@assistant-ui/react";
-import type { ToolDiagnostic } from "@earendil-works/pi-durable";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -26,9 +25,6 @@ import {
   DisclosureChevron,
   disclosureContent,
   disclosureTrigger,
-  ToolBlock,
-  ToolFallback,
-  type ToolRowStatus,
 } from "./components/assistant-ui/tool-fallback.tsx";
 import { ToolGroup } from "./components/assistant-ui/tool-group.tsx";
 import { TooltipIconButton } from "./components/assistant-ui/tooltip-icon-button.tsx";
@@ -39,13 +35,12 @@ import {
   CollapsibleTrigger,
 } from "./components/ui/collapsible.tsx";
 import { cn } from "./lib/utils.ts";
-import type { ToolArtifact } from "./projection.ts";
 import type { ConversationSnapshot, TranscriptGap } from "./session-state.ts";
+import { ToolCard } from "./tools/ToolCard.tsx";
 
 type PartState = Parameters<
   Extract<ComponentProps<typeof MessagePrimitive.Parts>["children"], (...args: never) => unknown>
 >[0]["part"];
-type ToolCallPart = Extract<PartState, { readonly type: "tool-call" }>;
 
 interface ThreadProps {
   readonly conversation: ConversationSnapshot | undefined;
@@ -460,43 +455,6 @@ function DataPart({
   }
 }
 
-function toolRowStatus(part: ToolCallPart): ToolRowStatus {
-  if (part.result !== undefined && part.isPreliminary !== true) {
-    return part.isError === true ? "failed" : "completed";
-  }
-  switch (part.status.type) {
-    case "running":
-      return part.isPreliminary === true ? "running" : "waiting";
-    case "incomplete":
-      return part.status.reason === "error" ? "failed" : "cancelled";
-    case "requires-action":
-      return "waiting";
-    default:
-      return "completed";
-  }
-}
-
-function ToolCard({ part }: { readonly part: ToolCallPart }) {
-  const artifact = (part.artifact ?? {}) as ToolArtifact;
-  const output = typeof part.result === "string" ? part.result : undefined;
-  return (
-    <ToolFallback toolName={part.toolName} status={toolRowStatus(part)}>
-      {Object.keys(part.args).length === 0 ? null : (
-        <ToolBlock label="Arguments">{JSON.stringify(part.args, null, 2)}</ToolBlock>
-      )}
-      {output === undefined || output.length === 0 ? null : (
-        <ToolBlock label="Result">{output}</ToolBlock>
-      )}
-      {artifact.details === undefined ? null : (
-        <ToolBlock label="Details">{JSON.stringify(artifact.details, null, 2)}</ToolBlock>
-      )}
-      {artifact.diagnostics === undefined || artifact.diagnostics.length === 0 ? null : (
-        <Diagnostics diagnostics={artifact.diagnostics} />
-      )}
-    </ToolFallback>
-  );
-}
-
 function Disclosure({ label, children }: { readonly label: string; readonly children: ReactNode }) {
   return (
     <Collapsible>
@@ -506,18 +464,6 @@ function Disclosure({ label, children }: { readonly label: string; readonly chil
       </CollapsibleTrigger>
       <CollapsibleContent className={disclosureContent}>{children}</CollapsibleContent>
     </Collapsible>
-  );
-}
-
-function Diagnostics({ diagnostics }: { readonly diagnostics: readonly ToolDiagnostic[] }) {
-  return (
-    <ul className="m-0 ps-5 text-xs">
-      {diagnostics.map((diagnostic, index) => (
-        <li key={`${diagnostic.code ?? "diagnostic"}-${index}`}>
-          <strong>{capitalize(diagnostic.severity)}</strong>: {diagnostic.message}
-        </li>
-      ))}
-    </ul>
   );
 }
 
@@ -564,6 +510,3 @@ const formatAbsoluteTime = (timestamp: Date): string =>
     minute: "2-digit",
     second: "2-digit",
   });
-
-const capitalize = (value: string): string =>
-  value.length === 0 ? value : value[0].toUpperCase() + value.slice(1);

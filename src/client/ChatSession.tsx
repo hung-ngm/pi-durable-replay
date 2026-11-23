@@ -133,7 +133,6 @@ export function ChatSession({ sessionId, username }: ChatSessionProps) {
         onSetBudgets={session.setBudgets}
         onAbortConversation={session.abortConversation}
         onAbortSession={session.abortSession}
-        onApproveUnsafe={session.approveUnsafe}
         onInjectFault={session.injectFault}
       />
     </>

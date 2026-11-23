@@ -1,6 +1,7 @@
 import { type AppendMessage, useExternalStoreRuntime } from "@assistant-ui/react";
 import { type ConversationSummary, ROOT_CONVERSATION_ID } from "../protocol.ts";
-import type { PiMessage } from "./projection.ts";
+import { useMemo } from "react";
+import { type PiMessage, withReplayApproval } from "./projection.ts";
 import type { PiSession } from "./usePiSession.ts";
 
 export const conversationLabel = ({ id, parent, owner }: ConversationSummary): string => {
@@ -29,8 +30,18 @@ export function useSessionRuntime(
 ) {
   const conversationId = session.activeConversationId;
   const snapshot = session.activeConversation;
+  const replay =
+    conversationId === undefined ? undefined : session.control?.replays[String(conversationId)];
+  const projected = snapshot?.messages ?? NO_MESSAGES;
+  const messages = useMemo(
+    () =>
+      conversationId === undefined
+        ? projected
+        : withReplayApproval(projected, conversationId, replay),
+    [projected, conversationId, replay],
+  );
   return useExternalStoreRuntime<PiMessage>({
-    messages: snapshot?.messages ?? NO_MESSAGES,
+    messages,
     convertMessage: asThreadMessage,
     isRunning: snapshot?.isRunning ?? false,
     isDisabled: session.status !== "connected" || conversationId === undefined,
@@ -41,6 +52,9 @@ export function useSessionRuntime(
     onNew: async (message) => {
       if (conversationId === undefined) return;
       await session.submitPrompt(conversationId, promptText(message));
+    },
+    onRespondToToolApproval: async ({ approved }) => {
+      if (approved && conversationId !== undefined) session.approveUnsafe(conversationId);
     },
     onCancel: async () => {
       if (snapshot?.runTaskId !== undefined) session.abortTask(snapshot.runTaskId, "run");

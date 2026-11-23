@@ -12,7 +12,13 @@ import { useState, type ReactNode } from "react";
 import { cn } from "../../lib/utils.ts";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/collapsible.tsx";
 
-export type ToolRowStatus = "waiting" | "running" | "completed" | "failed" | "cancelled";
+export type ToolRowStatus =
+  | "waiting"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "blocked";
 
 const rowLabel: Record<ToolRowStatus, string> = {
   waiting: "Waiting on tool",
@@ -20,6 +26,7 @@ const rowLabel: Record<ToolRowStatus, string> = {
   completed: "Used tool",
   failed: "Failed tool",
   cancelled: "Cancelled tool",
+  blocked: "Blocked tool",
 };
 
 const rowIcon: Record<ToolRowStatus, LucideIcon> = {
@@ -28,6 +35,7 @@ const rowIcon: Record<ToolRowStatus, LucideIcon> = {
   completed: CheckIcon,
   failed: XCircleIcon,
   cancelled: XCircleIcon,
+  blocked: CircleAlertIcon,
 };
 
 export const disclosureTrigger =
@@ -60,10 +68,12 @@ export function useFollowedOpen(wanted: boolean) {
 
 export function ToolFallback({
   toolName,
+  note,
   status,
   children,
 }: {
   readonly toolName: string;
+  readonly note?: string | undefined;
   readonly status: ToolRowStatus;
   readonly children: ReactNode;
 }) {
@@ -90,6 +100,7 @@ export function ToolFallback({
           )}
         >
           {rowLabel[status]}: <b>{toolName}</b>
+          {note === undefined ? null : <span className="text-xs"> · {note}</span>}
         </span>
         <DisclosureChevron />
       </CollapsibleTrigger>

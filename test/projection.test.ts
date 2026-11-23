@@ -5,6 +5,7 @@ import {
   sessionReducer,
   type SessionState,
 } from "../src/client/session-state.ts";
+import { withReplayApproval } from "../src/client/projection.ts";
 
 const usage = {
   input: 0,
@@ -274,5 +275,53 @@ describe("conversation projection", () => {
         ],
       },
     ]);
+  });
+});
+
+describe("Fork Replay approval on the blocked charge", () => {
+  const blockedCharge = (id: number, callId: string) => {
+    const message =
+      "Tool call blocked: charge_credits is blocked in this replay: conversation #1 already charged.";
+    const entry = toolResult(id, callId, "charge_credits", "");
+    return {
+      ...entry,
+      model: [
+        {
+          ...entry.model[0],
+          content: [{ type: "text", text: `<harness>\n[error] ${message}\n</harness>` }],
+          isError: true,
+        },
+      ],
+      data: { diagnostics: [{ severity: "error", code: "blocked", message }] },
+    };
+  };
+  const replay = {
+    sourceConversationId: 1,
+    forkEntryId: 3,
+    carried: [],
+    pendingUnsafeApproval: true,
+  };
+  const messages = messagesOf(
+    show(
+      initialSessionState,
+      viewOf([toolRequest(5, "call-9", "charge_credits"), blockedCharge(6, "call-9")]),
+    ),
+  );
+  const chargeOf = (projected: typeof messages) =>
+    projected[0]?.content.find((part) => part.type === "tool-call");
+
+  it("asks for approval on the blocked call, then reads approved once the replay records it", () => {
+    expect(chargeOf(withReplayApproval(messages, 7, replay))).toMatchObject({
+      approval: { id: "replay:7", approved: undefined },
+    });
+    expect(
+      chargeOf(
+        withReplayApproval(messages, 7, { ...replay, pendingUnsafeApproval: false, approvedAt: 9 }),
+      ),
+    ).toMatchObject({ approval: { id: "replay:7", approved: true } });
+  });
+
+  it("leaves a conversation that is not a replay untouched", () => {
+    expect(withReplayApproval(messages, 7, undefined)).toBe(messages);
   });
 });

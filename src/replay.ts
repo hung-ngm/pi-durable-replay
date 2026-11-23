@@ -8,6 +8,7 @@ import {
   type EntryId,
   type Harness,
 } from "@earendil-works/pi-durable";
+import { REPLAY_BLOCK_MARKER } from "./protocol.ts";
 import { CHARGE_CREDITS_TOOL_NAME, LedgerDoc } from "./tools.ts";
 
 export type CarriedToolResult = {
@@ -132,7 +133,7 @@ export async function approveUnsafe(
  * The approval gate: a beforeTool hook on every tool call. In a Fork Replay whose
  * source conversation charged, charge_credits is blocked until the operator approves
  * it (approveUnsafe). The approval is durable in the ReplayDoc, so a crash never asks
- * twice; the block is the ask, and the Control Panel is where it is answered.
+ * twice; the block is the ask, and the blocked call is where it is answered.
  */
 export const unsafeGateHook = hook(ToolTask, {
   beforeTool: async (call, api, context) => {
@@ -141,9 +142,9 @@ export const unsafeGateHook = hook(ToolTask, {
     if (replay === undefined || !replay.pendingUnsafeApproval) return undefined;
     return {
       block:
-        `${call.name} is blocked in this replay: conversation #${replay.sourceConversationId} ` +
+        `${call.name} ${REPLAY_BLOCK_MARKER}: conversation #${replay.sourceConversationId} ` +
         "already charged, so a charge here needs fresh approval. " +
-        "The operator can approve it in the Control Panel.",
+        "The operator can approve it on the blocked call.",
     };
   },
 });

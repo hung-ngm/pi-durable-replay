@@ -11,7 +11,6 @@ interface ControlPanelProps {
   readonly onSetBudgets: (tokenBudget: number, turnBudget: number) => void;
   readonly onAbortConversation: (conversationId: number) => void;
   readonly onAbortSession: () => void;
-  readonly onApproveUnsafe: (conversationId: number) => void;
   readonly onInjectFault: (
     conversationId: number,
     kind: "interrupt-unsafe" | "crash-loop" | "evict",
@@ -36,7 +35,6 @@ export function ControlPanel({
   onSetBudgets,
   onAbortConversation,
   onAbortSession,
-  onApproveUnsafe,
   onInjectFault,
 }: ControlPanelProps) {
   const [tokenBudget, setTokenBudget] = useState("");
@@ -121,21 +119,10 @@ export function ControlPanel({
             .
           </p>
           {replay.pendingUnsafeApproval ? (
-            <>
-              <p className="text-muted-foreground text-xs">
-                An unsafe tool result was carried forward. It will not run again without your
-                approval.
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  if (activeConversationId !== undefined) onApproveUnsafe(activeConversationId);
-                }}
-              >
-                Approve unsafe tools in this replay
-              </Button>
-            </>
+            <p className="text-muted-foreground text-xs" role="status">
+              An unsafe tool result was carried forward. A charge here waits for your approval on
+              the blocked call.
+            </p>
           ) : replay.approvedAt === undefined ? null : (
             <p className="text-muted-foreground text-xs">Unsafe tools approved for this replay.</p>
           )}
