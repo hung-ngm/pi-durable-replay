@@ -1,0 +1,86 @@
+name: Deploy Worker
+
+# Deployment path (SPEC Unit 10, revised 23 Nov 2026 at Hùng's direction):
+# GitHub Actions deploys, not a local wrangler run - this repo's development
+# sandbox cannot reach the Cloudflare API or OpenAI from inside workerd, and
+# CI keeps every credential out of the sandbox entirely. The job needs four
+# repository secrets (Settings > Secrets and variables > Actions):
+#   CLOUDFLARE_API_TOKEN   token with the "Edit Cloudflare Workers" policy
+#   CLOUDFLARE_ACCOUNT_ID  the account to deploy to
+#   OPENAI_API_KEY         the agent's provider key (becomes a Worker secret)
+#   CONTROL_TOKEN          the app's own bearer token (becomes a Worker secret)
+# The two app secrets are uploaded with the deploy via --secrets-file, per
+# https://developers.cloudflare.com/workers/configuration/secrets/ - the file
+# exists only in the runner's temp directory and is deleted in the same job.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Check (format, types, build, dry-run deploy)
+        run: bun run check
+
+      - name: Test
+        run: bun run test
+
+      - name: Require deployment secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CONTROL_TOKEN: ${{ secrets.CONTROL_TOKEN }}
+        run: |
+          missing=""
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID OPENAI_API_KEY CONTROL_TOKEN; do
+            if [ -z "${!name}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secrets:$missing"
+            exit 1
+          fi
+
+      - name: Write Worker secrets file
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CONTROL_TOKEN: ${{ secrets.CONTROL_TOKEN }}
+          SECRETS_FILE: ${{ runner.temp }}/worker-secrets.json
+        run: |
+          bun -e 'await Bun.write(process.env.SECRETS_FILE, JSON.stringify({
+            OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+            CONTROL_TOKEN: process.env.CONTROL_TOKEN,
+          }))'
+
+      - name: Deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SECRETS_FILE: ${{ runner.temp }}/worker-secrets.json
+        run: bun x wrangler deploy --secrets-file "$SECRETS_FILE"
+
+      - name: Remove Worker secrets file
+        if: always()
+        env:
+          SECRETS_FILE: ${{ runner.temp }}/worker-secrets.json
+        run: rm -f "$SECRETS_FILE"
