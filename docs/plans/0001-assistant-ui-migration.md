@@ -1,6 +1,6 @@
 # Plan: move the client to assistant-ui
 
-Status: proposed 24 Nov 2026. This plan changes no code. Execution starts on the operator's go.
+Status: PR1 to PR4 landed and deployed on 24 Nov 2026. The restyle units R1 to R4 and the revised PR5 to PR7 were approved on 24 Nov 2026.
 
 ## What changes
 
@@ -38,7 +38,7 @@ Don't run `assistant-ui init`. It brings in shadcn and Tailwind, and it exits wi
 bun add @assistant-ui/react@0.15.38 @assistant-ui/react-markdown@0.14.26
 ```
 
-Styling stays in `src/client/styles.css`. The primitives render plain elements with `data-*` state attributes, such as `[data-status="running"]`, and the CSS targets those. Syntax highlighting stays out. No transcript today needs it, and it is the largest optional dependency.
+Styling moved to Tailwind v4 and copied shadcn components in [ADR 0006](../adr/0006-client-styling-on-tailwind-and-shadcn.md); see **Restyle** below. Syntax highlighting stays out. No transcript today needs it, and it is the largest optional dependency.
 
 ## Data shape
 
@@ -103,22 +103,29 @@ How this departs from the adapter:
 
 ```
 PR1 sign-in form ─┐
-PR2 Enter sends ──┤  (independent, both from trunk. PR2's live check needs PR1 merged, or the operator's own browser)
-                  │
-PR3 projection + ADR 0005 ──> PR4 thread on assistant-ui ──> PR5 thread list ──> PR6 tool UIs + inline approval ──> PR7 markdown, docs, cleanup
+PR2 Enter sends ──┤  (landed)
+PR3 projection ───┤
+PR4 thread ───────┘──> R1 Tailwind foundation ──> R2 thread and composer ──> R3 tool rows and pi parts ──> R4 dashboards
+                                                                                                          │
+                       PR5 thread list sidebar <──────────────────────────────────────────────────────────┘
+                         └──> PR6 tool UIs + inline approval ──> PR7 markdown, docs, delete styles.css
 ```
 
-| PR  | Depends on | Files it may touch                                                                                                                                                                             | Operator review before merge |
-| --- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| PR1 | trunk      | `src/client/control-token.ts`, `src/client/App.tsx`, `src/client/styles.css`                                                                                                                   | yes (interaction)            |
-| PR2 | trunk      | `src/client/ChatSession.tsx`                                                                                                                                                                   | yes (interaction)            |
-| PR3 | trunk      | `package.json`, `bun.lock`, `src/client/projection.ts`, `src/client/session-state.ts`, `test/projection.test.ts`, `test/session-state.test.ts`, `docs/adr/0005-*.md`, `SPEC.md`                | no                           |
-| PR4 | PR3        | `src/client/ChatSession.tsx`, `src/client/Thread.tsx` (new), `src/client/useSessionRuntime.ts` (new), `src/client/styles.css`; deletes `src/client/Transcript.tsx`, `test/transcript.test.tsx` | yes                          |
-| PR5 | PR4        | `src/client/ChatSession.tsx`, `src/client/ConversationList.tsx` (new), `src/client/useSessionRuntime.ts`, `styles.css`                                                                         | yes                          |
-| PR6 | PR4        | `src/client/tools/*.tsx` (new), `src/client/projection.ts`, `src/client/ControlPanel.tsx`, `src/replay.ts` (message text only), `styles.css`                                                   | yes                          |
-| PR7 | PR6        | `src/client/Thread.tsx`, `package.json`, `README.md`, `SPEC.md`, `styles.css`                                                                                                                  | no                           |
+| PR  | Depends on | Files it may touch                                                                                                                                                                                                               | Operator review before merge |
+| --- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| PR1 | trunk      | `src/client/control-token.ts`, `src/client/App.tsx`, `src/client/styles.css`                                                                                                                                                     | yes (interaction)            |
+| PR2 | trunk      | `src/client/ChatSession.tsx`                                                                                                                                                                                                     | yes (interaction)            |
+| PR3 | trunk      | `package.json`, `bun.lock`, `src/client/projection.ts`, `src/client/session-state.ts`, `test/projection.test.ts`, `test/session-state.test.ts`, `docs/adr/0005-*.md`, `SPEC.md`                                                  | no                           |
+| PR4 | PR3        | `src/client/ChatSession.tsx`, `src/client/Thread.tsx` (new), `src/client/useSessionRuntime.ts` (new), `src/client/styles.css`; deletes `src/client/Transcript.tsx`, `test/transcript.test.tsx`                                   | yes                          |
+| R1  | PR4        | `package.json`, `bun.lock`, `vite.config.ts`, `tsconfig.client.json`, `src/client/main.tsx`, `src/client/globals.css` (new), `src/client/lib/` (new), `src/client/components/` (new), `docs/adr/0005-*.md`, `docs/adr/0006-*.md` | no (lands on main)           |
+| R2  | R1         | `src/client/Thread.tsx`, `src/client/ChatSession.tsx`, `src/client/styles.css`                                                                                                                                                   | no (lands on main)           |
+| R3  | R2         | `src/client/components/assistant-ui/` (new files), `src/client/Thread.tsx`, `src/client/styles.css`                                                                                                                              | no (lands on main)           |
+| R4  | R3         | `src/client/App.tsx`, `src/client/ChatSession.tsx`, `src/client/ControlPanel.tsx`, `src/client/ActivityPanel.tsx`, `src/client/styles.css`                                                                                       | no (lands on main)           |
+| PR5 | R4         | `src/client/ChatSession.tsx`, `src/client/ConversationList.tsx` (new), `src/client/useSessionRuntime.ts`, `styles.css`                                                                                                           | yes                          |
+| PR6 | PR5        | `src/client/tools/*.tsx` (new), `src/client/projection.ts`, `src/client/ControlPanel.tsx`, `src/replay.ts` (message text only), `styles.css`                                                                                     | yes                          |
+| PR7 | PR6        | `src/client/Thread.tsx`, `package.json`, `README.md`, `SPEC.md`, `styles.css`                                                                                                                                                    | no                           |
 
-PR5 and PR6 both touch `styles.css` and `useSessionRuntime.ts`, so they land one after the other, not in parallel.
+Every unit lands in order, straight on `main`: commit, push, the deploy workflow, then a check on the deployed app (see **Restyle: How each unit is verified and shipped**). R1 to PR7 all touch the client styles, so none run in parallel.
 
 Perf baseline, measured on trunk `d0d6233` on 23 Nov 2026 with `bun run build`: client JS is 284,560 bytes raw and 87,175 bytes gzip (`gzip -c | wc -c`), and CSS is 6,570 bytes raw and 1,706 bytes gzip. Every perf box below uses that probe.
 
@@ -194,23 +201,98 @@ Perf baseline, measured on trunk `d0d6233` on 23 Nov 2026 with `bun run build`: 
   - [ ] Client JS gzip ≤ 255,000 bytes, the 87,175-byte baseline plus the ~162 KB estimate with margin. Fails above that.
   - [ ] Streaming: in the pane, a `PerformanceObserver({ type: "longtask" })` counts tasks over 50 ms while a 40-message transcript streams one answer. Measure trunk first. Fails if PR4 exceeds trunk's count by more than 2.
 
-## PR5. Conversation list on assistant-ui
+## Restyle: the Generative UI look
 
-**Why.** The sidebar list is a thread list. Moving it onto `ThreadListPrimitive` gives keyboard navigation and active state from the runtime, not from hand-kept `aria-current`.
+**Why.** The chat should look like assistant-ui's [Generative UI example](https://www.assistant-ui.com/examples/generative-ui) ([source](https://github.com/assistant-ui/assistant-ui/tree/main/examples/with-generative-ui)). PR4 left the primitives unstyled under browser defaults. [ADR 0006](../adr/0006-client-styling-on-tailwind-and-shadcn.md) records the switch to Tailwind v4 and copied shadcn components.
+
+### Decisions (grilled 24 Nov 2026)
+
+| Decision         | Choice                                                                                                                                                                                                                                                                                                                      |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Styling          | Tailwind v4 via `@tailwindcss/vite`, `tw-animate-css`, shadcn zinc tokens in oklch, components copied as source in their Radix variants. No shadcn CLI.                                                                                                                                                                     |
+| Scope            | The whole page takes the tokens and buttons. Only the thread and composer copy the example's layout. The Activity and Control panels keep their structure.                                                                                                                                                                  |
+| Unchanged        | Runtime (`useSessionRuntime`), projection, message ids.                                                                                                                                                                                                                                                                     |
+| Scroll           | `turnAnchor="bottom"` with auto-scroll, plus the example's scroll-to-bottom button.                                                                                                                                                                                                                                         |
+| Dropped controls | Edit, Reload, branch picker, feedback, Export as Markdown, welcome suggestions. Fork and Replay sit in the action bar.                                                                                                                                                                                                      |
+| Action bar       | `autohide="not-last"`: shown on hover or focus, always on the last message.                                                                                                                                                                                                                                                 |
+| Kill button      | The composer's button reads **Kill run**, the glossary's term for a run-scope Kill. "Stop" stays out, as the glossary says.                                                                                                                                                                                                 |
+| Theme            | Follows `prefers-color-scheme`. No toggle. System fonts.                                                                                                                                                                                                                                                                    |
+| Tool calls       | The example's collapsible row: status icon, "Used tool: **name**", chevron, args and result in muted blocks. Consecutive calls group under "N tool calls". Running and failed rows start open. Diagnostics go in the body.                                                                                                  |
+| Pi parts         | Run failure: destructive error box with `TriangleAlert`. Compaction and reset: muted centred divider that expands. Gap: centred outline button. Queued inputs: muted right-aligned bubbles with a "Queued" badge. Typing and compaction status: muted text in the composer footer. Retry notice: muted line with a spinner. |
+| Phone            | R4 restyles today's responsive layout in place. PR5 brings the example's off-canvas sidebar.                                                                                                                                                                                                                                |
+| Budget           | Client JS stays ≤ 280,000 bytes gzip; 300,000 is a hard stop that needs the operator's sign-off. Client CSS ≤ 15,000 bytes gzip.                                                                                                                                                                                            |
+
+### Accessibility bar, checked in every unit
+
+- Every role and label that exists today survives: `role="log"` on the transcript, the `#prompt` label, the sign-in field's label and alert, the Control and Activity panel controls.
+- Every icon-only button has an accessible name (`TooltipIconButton` renders an `sr-only` label).
+- Focus is visible on every control, the composer shell included (`focus-within` border, since the textarea has no outline).
+- Every entrance and collapse animation has a `motion-reduce` guard, the message entrances included.
+- Proof: the `read_page` accessibility tree plus a keyboard tab-through in the browser pane, before and after.
+
+### How each unit is verified and shipped
+
+1. **Local gate.** On the `verify` launch config (corpus backend): the unit's live box, the accessibility bar, and screenshots of our thread beside the live example at 1280 and 375 widths, light and dark. Parity is judged by eye against the deliberate differences above, not pixel-diffed. `bun run check` and `bun run test` pass. Stop the verify server before `bun run check`.
+2. **Ship.** Commit to `main` and push. The push deploys through `.github/workflows/deploy.yml`.
+3. **Deployed smoke.** Once the run is green, on the deployed app: one research prompt, the tool rows, light and dark, a 375-width screenshot. Runs there spend real OpenAI and Exa tokens, so they stay short. The operator signs in once in the pane; the cookie lasts 30 days.
+
+## R1. Tailwind foundation
 
 - [ ] Depends on: PR4.
-- [ ] Files: new `src/client/ConversationList.tsx`; `src/client/ChatSession.tsx`, `src/client/useSessionRuntime.ts`, `styles.css`.
-- [ ] Change: `adapters.threadList` as in **Runtime wiring**. The list renders `ThreadListPrimitive.Root`, `New` (**New conversation**), and `Items` with `ThreadListItemPrimitive.Trigger`. The labels keep today's main, fork, and subagent wording. `?conversation=` URLs and back/forward still open the linked conversation. Archive, rename, and delete stay unset, because Pi Durable has no such commands.
+- [ ] Files: `package.json`, `bun.lock`, `vite.config.ts`, `tsconfig.client.json`, new `src/client/globals.css`, new `src/client/lib/utils.ts`, new `src/client/components/ui/{button,tooltip,collapsible}.tsx`, new `src/client/components/assistant-ui/tooltip-icon-button.tsx`, `src/client/main.tsx`, `docs/adr/0006-*.md`, `docs/adr/0005-*.md` (one line pointing to 0006).
+- [ ] Change: add `tailwindcss`, `@tailwindcss/vite`, `tw-animate-css`, `radix-ui`, `class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react` at exact versions. `globals.css` holds `@import "tailwindcss"`, `tw-animate-css`, the zinc tokens for light and dark under `prefers-color-scheme`, the base layer, and the collapsible and shimmer keyframes from assistant-ui's default template. `@/` resolves to `src/client`. `styles.css` stays imported after `globals.css`, so nothing moves yet.
+- [ ] Result you see: the page in the new colours and system font, light or dark with the OS. Layout unchanged.
+- [ ] Unit: `bun run check` and `bun run test` pass.
+- [ ] Live: the PR4 live box still passes locally (Enter sends, Stop run, Fork, Replay). Dark mode follows the pane's colour scheme. The accessibility bar holds.
+- [ ] Perf: JS gzip within +25 KB of PR4's 198,818 bytes (expect less: unused Radix pieces tree-shake). CSS gzip ≤ 15,000. Name both numbers in the commit.
+
+## R2. Thread and composer in the example's layout
+
+- [ ] Depends on: R1.
+- [ ] Files: `src/client/Thread.tsx`, `src/client/ChatSession.tsx`, `src/client/styles.css` (delete the transcript and composer rules it replaces).
+- [ ] Change: port `thread.aui.tsx`'s layout onto our `Thread`: the 44rem column, user bubbles on the right, assistant text without a bubble, the action bar (`autohide="not-last"`) with Copy, Fork, and Replay as `TooltipIconButton`s, the scroll-to-bottom button, and the composer shell with a round Send (`ArrowUp`) and a round **Kill run** (`Square`) button. Message entrances get `motion-reduce:animate-none`.
+- [ ] Result you see: the example's thread and composer, with Fork and Replay in place of Edit, Reload, and feedback.
+- [ ] Unit: `bun run check` and `bun run test` pass.
+- [ ] Live: a research run streams with the viewport at the bottom; scrolling up holds and shows the scroll-to-bottom button; Enter sends and Shift+Enter adds a line; **Kill run** ends a `slow_search` run with the Control panel reading `run (manual)`; Fork and Replay work after hovering or tabbing to a message; the parity screenshots; the accessibility bar.
+- [ ] Perf: JS gzip within +10 KB of R1.
+
+## R3. Tool rows and pi parts
+
+- [ ] Depends on: R2.
+- [ ] Files: new `src/client/components/assistant-ui/tool-fallback.tsx` and `tool-group.tsx`, `src/client/Thread.tsx`, `src/client/styles.css`.
+- [ ] Change: tool-call parts render the example's collapsible row, grouped with `MessagePrimitive.GroupedParts` when consecutive, with our status words as row labels (Running tool, Used tool, Failed tool, Cancelled tool) and diagnostics in the body. Run failures, compaction and reset notes, gaps, queued inputs, typing and compaction status, and the retry notice take the styles in the decisions table.
+- [ ] Result you see: research shows "3 tool calls" collapsing to one row; a killed `slow_search` row reads Failed tool and stays open.
+- [ ] Unit: `bun run check` and `bun run test` pass.
+- [ ] Live: research (grouped rows, collapsed on completion), `slow_search` progress while running, a killed run's error box, a `crash_loop` fault, the parity screenshots, the accessibility bar (each row trigger is a button with an accessible name and `aria-expanded`).
+- [ ] Perf: JS gzip within +5 KB of R2.
+
+## R4. Dashboards and sign-in take the tokens
+
+- [ ] Depends on: R3.
+- [ ] Files: `src/client/App.tsx`, `src/client/ChatSession.tsx`, `src/client/ControlPanel.tsx`, `src/client/ActivityPanel.tsx`, `src/client/styles.css`.
+- [ ] Change: the sidebar, Control panel, Activity panel, conversation header, and sign-in form use the shadcn `Button` and the tokens. Structure and behaviour stay. Today's responsive layout (Activity as an overlay below 75rem) is restyled in place.
+- [ ] Result you see: one visual system across the page.
+- [ ] Unit: `bun run check` and `bun run test` pass.
+- [ ] Live: a wrong sign-in token shows the alert; set budgets; inject each fault; Kill conversation and Kill all; open a subagent from the Activity panel at 375 width; the accessibility bar.
+- [ ] Perf: JS gzip within +3 KB of R3. CSS gzip ≤ 15,000.
+
+## PR5. Conversation list on assistant-ui
+
+**Why.** The sidebar list is a thread list. Moving it onto `ThreadListPrimitive` gives keyboard navigation and active state from the runtime, not from hand-kept `aria-current`. It is built in the example's sidebar style, which collapses to an off-canvas sheet on phones.
+
+- [ ] Depends on: R4.
+- [ ] Files: new `src/client/ConversationList.tsx`, new `src/client/components/ui/sheet.tsx`; `src/client/ChatSession.tsx`, `src/client/useSessionRuntime.ts`, `styles.css`.
+- [ ] Change: `adapters.threadList` as in **Runtime wiring**. The list renders `ThreadListPrimitive.Root`, `New` (**New conversation**), and `Items` with `ThreadListItemPrimitive.Trigger`. The labels keep today's main, fork, and subagent wording. `?conversation=` URLs and back/forward still open the linked conversation. Archive, rename, and delete stay unset, because Pi Durable has no such commands. Below 48rem the sidebar becomes an off-canvas sheet (Radix Dialog) opened from a labelled menu button, with focus trapped while open and returned on close.
 - [ ] Result you see: the same list. Clicking, back/forward, and **New conversation** behave as before.
 - [ ] Unit: `bun run check` passes.
-- [ ] Live: create two conversations, switch between them, press Back. Passes when the URL, the highlighted item, and the thread all agree after each step. Opening a subagent from the Activity panel highlights it in the list.
-- [ ] Perf: client JS gzip within +3 KB of PR4.
+- [ ] Live: create two conversations, switch between them, press Back. Passes when the URL, the highlighted item, and the thread all agree after each step. Opening a subagent from the Activity panel highlights it in the list. At 375 width the sheet opens, traps focus, closes on Escape, and returns focus to the menu button.
+- [ ] Perf: client JS gzip within +8 KB of R4 (Radix Dialog).
 
 ## PR6. Tool UIs and inline unsafe approval
 
 **Why.** Each tool says what it did in its own terms, and the Fork Replay approval moves to the blocked `charge_credits` call. The operator approves where the block happens.
 
-- [ ] Depends on: PR4. Lands after PR5, because both touch `styles.css` and `useSessionRuntime.ts`.
+- [ ] Depends on: PR5.
 - [ ] Files: new `src/client/tools/*.tsx`; `src/client/projection.ts`, `src/client/ControlPanel.tsx`, `src/replay.ts` (block message text only), `styles.css`.
 - [ ] Change: `defineToolkit` with `type: "backend"` renderers for:
   - [ ] `search`: query and result titles.
@@ -218,7 +300,7 @@ Perf baseline, measured on trunk `d0d6233` on 23 Nov 2026 with `bun run build`: 
   - [ ] `slow_search`: a staged progress line from the preliminary result.
   - [ ] `charge_credits`: credits, memo, and the matching Ledger entry. In a pending Fork Replay it shows an **Approve charge** card that calls `respondToApproval({ approved: true })`, which sends `run.approveUnsafe`.
   - [ ] `loop_forever` and `crash_loop`: a "fault tool" label.
-  - [ ] `ToolCard` stays the fallback.
+  - [ ] Each renderer composes R3's collapsible tool row, and R3's row stays the fallback.
   - [ ] The Control panel keeps the replay provenance and a status line, and loses its approve button. The gate's block text changes from "approve it in the Control Panel" to "approve it on the blocked call".
 - [ ] Result you see: tool cards in the tools' own terms. An approval card sits on the blocked charge. After approval the card reads "Approved", and the next charge in that conversation runs.
 - [ ] Unit: `test/replay.test.ts` still passes. Projection test: approval flips from `false` to `true` across a snapshot that sets `approvedAt`.
@@ -227,15 +309,15 @@ Perf baseline, measured on trunk `d0d6233` on 23 Nov 2026 with `bun run build`: 
 
 ## PR7. Markdown, docs, and cleanup
 
-**Why.** Answers with citations and lists read as raw text today. The docs must match the new client.
+**Why.** Answers with citations and lists read as raw text today. The docs must match the new client, and `styles.css` should not outlive the restyle.
 
 - [ ] Depends on: PR6.
-- [ ] Files: `src/client/Thread.tsx`, `package.json`, `README.md`, `SPEC.md`, `styles.css`.
-- [ ] Change: text parts render through `MarkdownTextPrimitive` with `smooth` left on. `MessageText` is deleted. The README features table and Code column name `Thread.tsx`, `useSessionRuntime.ts`, `projection.ts`, and `tools/`. SPEC's Client bullet points to ADR 0005. Unused CSS selectors from the old transcript are deleted, found with a grep of each selector against `src/client`.
+- [ ] Files: `src/client/Thread.tsx`, new `src/client/components/assistant-ui/markdown-text.tsx`, `package.json`, `README.md`, `SPEC.md`, `docs/adr/0006-*.md` (status to accepted); deletes `src/client/styles.css`.
+- [ ] Change: text parts render through the example's `markdown-text.tsx` (`MarkdownTextPrimitive` with `remark-gfm`, `@assistant-ui/react-markdown/styles/dot.css`, code-block header with a copy button). `MessageText` is deleted. The README features table and Code column name `Thread.tsx`, `useSessionRuntime.ts`, `projection.ts`, and `tools/`. SPEC's Client bullet points to ADRs 0005 and 0006. `styles.css` is deleted once a grep of each of its selectors against `src/client` finds no user.
 - [ ] Result you see: headings, lists, links, and code blocks render in answers.
 - [ ] Unit: `bun run check` and `bun run test` pass.
 - [ ] Live: ask a question whose answer has a numbered list and links. Passes when the list renders as `<ol>` and the links open in a new tab.
-- [ ] Perf: client JS gzip ≤ 280,000 bytes in total. Measure the markdown delta and name it in the PR.
+- [ ] Perf: client JS gzip ≤ 280,000 bytes in total (300,000 hard stop, operator sign-off). CSS gzip ≤ 15,000. Measure the markdown delta and name it in the commit.
 
 ---
 
@@ -243,5 +325,6 @@ Perf baseline, measured on trunk `d0d6233` on 23 Nov 2026 with `bun run build`: 
 
 - **Bundle cost in this build.** The 162 KB gzip figure is an esbuild measurement outside this repo. PR4's perf box measures it here.
 - **Stream render cost.** The identity-reuse pass in the projection is designed, not measured. PR4's long-task box decides whether it is enough.
-- **Stop's scope.** Stop maps to a run-scope Kill. The task graph does not expose a tool card's `callId`, so per-tool Kill stays in the Activity panel. Moving it onto tool cards needs the task id joined to the call id, and nothing in this plan builds that.
+- **Kill run's scope.** The composer's **Kill run** is a run-scope Kill. The task graph does not expose a tool card's `callId`, so per-tool Kill stays in the Activity panel. Moving it onto tool cards needs the task id joined to the call id, and nothing in this plan builds that.
+- **Restyle bundle cost.** The per-unit deltas in R1 to R4 are guesses until R1 measures Tailwind's CSS and the Radix pieces in this build.
 - **API stability.** `ExternalStoreThreadListAdapter` and the toolkit API are marked experimental upstream, though not scheduled for removal. The versions are pinned exactly for that reason.
