@@ -1,5 +1,6 @@
 import {
   ActionBarPrimitive,
+  AuiIf,
   ComposerPrimitive,
   ErrorPrimitive,
   MessagePrimitive,
@@ -7,8 +8,20 @@ import {
   useAuiState,
 } from "@assistant-ui/react";
 import type { ToolDiagnostic } from "@earendil-works/pi-durable";
-import type { ComponentProps } from "react";
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  CheckIcon,
+  CopyIcon,
+  GitForkIcon,
+  RotateCcwIcon,
+  SquareIcon,
+  TriangleAlertIcon,
+} from "lucide-react";
+import type { ComponentProps, ReactNode } from "react";
 import { MAX_PROMPT_CHARACTERS } from "../protocol.ts";
+import { TooltipIconButton } from "./components/assistant-ui/tooltip-icon-button.tsx";
+import { cn } from "./lib/utils.ts";
 import type { ToolArtifact } from "./projection.ts";
 import type { ConversationSnapshot, TranscriptGap } from "./session-state.ts";
 
@@ -24,97 +37,130 @@ interface ThreadProps {
   readonly onFillGap: (gap: TranscriptGap) => void;
 }
 
+const column = "mx-auto w-full max-w-[44rem] px-4";
+
 export function Thread({ conversation, onFork, onReplay, onFillGap }: ThreadProps) {
   return (
-    <ThreadPrimitive.Root className="thread">
+    <ThreadPrimitive.Root className="bg-background flex min-h-0 flex-col">
       <ThreadPrimitive.Viewport
-        className="transcript"
+        className="relative flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain"
         role="log"
         aria-labelledby="transcript-heading"
         tabIndex={0}
         autoScroll
       >
-        {conversation === undefined ? (
-          <p className="transcript-empty">Loading conversation…</p>
-        ) : (
-          <ThreadPrimitive.Empty>
-            <p className="transcript-empty">
-              Send a message to begin. You can fork the conversation from any user or assistant
-              message.
-            </p>
-          </ThreadPrimitive.Empty>
-        )}
-        {conversation?.hasEarlier === true ? (
-          <ThreadPrimitive.LoadEarlier className="text-button transcript-load">
-            Load earlier messages
-          </ThreadPrimitive.LoadEarlier>
-        ) : null}
-        <ol className="transcript-list">
-          <ThreadPrimitive.Messages>
-            {() => (
-              <li>
-                <Message onFork={onFork} onReplay={onReplay} onFillGap={onFillGap} />
-              </li>
-            )}
-          </ThreadPrimitive.Messages>
-        </ol>
-        <ThreadPrimitive.ViewportFooter>
-          {conversation === undefined || conversation.compactions.length === 0 ? null : (
-            <p className="compaction-status" role="status">
-              {conversation.compactions.some(({ blocking }) => blocking)
-                ? "Compacting context before responding…"
-                : "Compacting context in the background…"}
-            </p>
+        <div className={cn(column, "flex flex-1 flex-col pt-4")}>
+          {conversation === undefined ? (
+            <p className="text-muted-foreground my-auto text-center">Loading conversation…</p>
+          ) : (
+            <ThreadPrimitive.Empty>
+              <div className="fade-in animate-in my-auto py-8 text-center duration-300 motion-reduce:animate-none">
+                <p className="m-0 text-2xl font-medium tracking-tight">How can I help you today?</p>
+                <p className="text-muted-foreground m-0 mt-2 text-sm">
+                  Send a message to begin. You can fork the conversation from any user or assistant
+                  message.
+                </p>
+              </div>
+            </ThreadPrimitive.Empty>
           )}
-          {conversation === undefined || conversation.queued.length === 0 ? null : (
-            <ol className="transcript-list queued-inputs" aria-label="Queued messages">
-              {conversation.queued.map((input) => (
-                <li key={input.submissionId}>
-                  <article className="transcript-message transcript-message--user transcript-message--queued">
-                    <header>
-                      <div className="transcript-message-title">
-                        <strong>User</strong>
-                        <span>Queued</span>
-                      </div>
-                    </header>
-                    <MessageText text={input.text} />
-                  </article>
+          {conversation?.hasEarlier === true ? (
+            <ThreadPrimitive.LoadEarlier className="text-muted-foreground hover:bg-accent mb-6 cursor-pointer self-center rounded-full border-0 bg-transparent px-3 py-1.5 text-sm">
+              Load earlier messages
+            </ThreadPrimitive.LoadEarlier>
+          ) : null}
+          <ol className="m-0 mb-8 flex list-none flex-col gap-y-6 p-0">
+            <ThreadPrimitive.Messages>
+              {() => (
+                <li>
+                  <Message onFork={onFork} onReplay={onReplay} onFillGap={onFillGap} />
                 </li>
-              ))}
-            </ol>
-          )}
-        </ThreadPrimitive.ViewportFooter>
+              )}
+            </ThreadPrimitive.Messages>
+          </ol>
+          <ThreadPrimitive.ViewportFooter className="mt-auto flex flex-col gap-3 pb-4">
+            {conversation === undefined || conversation.compactions.length === 0 ? null : (
+              <p className="text-muted-foreground m-0 text-center text-sm" role="status">
+                {conversation.compactions.some(({ blocking }) => blocking)
+                  ? "Compacting context before responding…"
+                  : "Compacting context in the background…"}
+              </p>
+            )}
+            {conversation === undefined || conversation.queued.length === 0 ? null : (
+              <ol
+                className="m-0 flex list-none flex-col items-end gap-2 p-0"
+                aria-label="Queued messages"
+              >
+                {conversation.queued.map((input) => (
+                  <li
+                    key={input.submissionId}
+                    className="bg-muted/60 text-muted-foreground max-w-[80%] rounded-2xl px-4 py-2"
+                  >
+                    <span className="mb-1 block text-xs font-medium">Queued</span>
+                    <MessageText text={input.text} />
+                  </li>
+                ))}
+              </ol>
+            )}
+          </ThreadPrimitive.ViewportFooter>
+        </div>
       </ThreadPrimitive.Viewport>
-      <Composer typing={conversation?.typing ?? []} />
+      <div className={cn(column, "relative flex flex-col gap-1 pb-4 md:pb-6")}>
+        <ThreadPrimitive.ScrollToBottom asChild>
+          <TooltipIconButton
+            tooltip="Scroll to bottom"
+            variant="outline"
+            className="dark:bg-background dark:hover:bg-accent absolute -top-12 z-10 size-9 self-center rounded-full border p-2 disabled:invisible"
+          >
+            <ArrowDownIcon />
+          </TooltipIconButton>
+        </ThreadPrimitive.ScrollToBottom>
+        <Composer />
+        <p className="text-muted-foreground m-0 min-h-4 px-2 text-xs" aria-live="polite">
+          {typingLabel(conversation?.typing ?? [])}
+        </p>
+      </div>
     </ThreadPrimitive.Root>
   );
 }
 
-function Composer({ typing }: { readonly typing: readonly string[] }) {
+function Composer() {
   return (
-    <ComposerPrimitive.Root className="prompt-bar">
-      <label className="visually-hidden" htmlFor="prompt">
+    <ComposerPrimitive.Root className="border-foreground/10 focus-within:border-foreground/25 focus-within:ring-ring/50 flex w-full flex-col gap-2 rounded-2xl border border-solid bg-[color-mix(in_oklab,var(--color-muted)_30%,transparent)] p-2 transition-[border-color] focus-within:ring-2">
+      <label className="sr-only" htmlFor="prompt">
         Message
       </label>
       <ComposerPrimitive.Input
         id="prompt"
         name="prompt"
-        minRows={3}
-        maxRows={12}
+        minRows={1}
+        maxRows={8}
         maxLength={MAX_PROMPT_CHARACTERS}
         placeholder="Send a message… (Shift+Enter for a new line)"
         submitMode="enter"
+        enterKeyHint="send"
         aria-keyshortcuts="Enter"
+        className="caret-primary placeholder:text-muted-foreground/60 text-foreground max-h-48 min-h-10 w-full resize-none border-0 bg-transparent px-2.5 py-1 font-[inherit] text-base leading-6 outline-none"
       />
-      <ThreadPrimitive.If running={false}>
-        <ComposerPrimitive.Send>Send</ComposerPrimitive.Send>
-      </ThreadPrimitive.If>
-      <ThreadPrimitive.If running>
-        <ComposerPrimitive.Cancel>Stop run</ComposerPrimitive.Cancel>
-      </ThreadPrimitive.If>
-      <p className="typing-indicator" aria-live="polite">
-        {typingLabel(typing)}
-      </p>
+      <div className="flex items-center justify-end gap-1.5">
+        <AuiIf condition={(s) => !s.thread.isRunning}>
+          <ComposerPrimitive.Send asChild>
+            <TooltipIconButton
+              tooltip="Send message"
+              variant="default"
+              className="size-7 rounded-full"
+            >
+              <ArrowUpIcon className="size-4" />
+            </TooltipIconButton>
+          </ComposerPrimitive.Send>
+        </AuiIf>
+        <AuiIf condition={(s) => s.thread.isRunning}>
+          <ComposerPrimitive.Cancel asChild>
+            <TooltipIconButton tooltip="Kill run" variant="default" className="size-7 rounded-full">
+              <SquareIcon className="size-3.5 fill-current" />
+            </TooltipIconButton>
+          </ComposerPrimitive.Cancel>
+        </AuiIf>
+      </div>
     </ComposerPrimitive.Root>
   );
 }
@@ -143,6 +189,9 @@ const kindLabel: Record<MessageKind, string> = {
   failure: "Run ended",
 };
 
+const entrance =
+  "fade-in slide-in-from-bottom-1 animate-in duration-150 motion-reduce:animate-none";
+
 function Message({ onFork, onReplay, onFillGap }: Omit<ThreadProps, "conversation">) {
   const id = useAuiState((s) => s.message.id);
   const role = useAuiState((s) => s.message.role);
@@ -159,63 +208,133 @@ function Message({ onFork, onReplay, onFillGap }: Omit<ThreadProps, "conversatio
       {({ part }) => <Part part={part} onFillGap={onFillGap} />}
     </MessagePrimitive.Parts>
   );
-  if (kind === "gap") return parts;
+  if (kind === "gap") return <div className="flex justify-center">{parts}</div>;
 
   const forkable = entryId !== undefined && (kind === "user" || kind === "assistant");
+  const heading = (
+    <span className="sr-only" title={entryId === undefined ? undefined : `Entry (id: ${entryId})`}>
+      {kindLabel[kind]}
+    </span>
+  );
+  const footer = (
+    <MessageFooter align={kind === "user" ? "end" : "start"}>
+      {createdAt === undefined || kind === "failure" ? null : <MessageTime timestamp={createdAt} />}
+      {forkable ? (
+        <MessageActions
+          onFork={() => onFork(entryId)}
+          onReplay={kind === "assistant" && hasToolCalls ? () => onReplay(entryId) : undefined}
+        />
+      ) : null}
+    </MessageFooter>
+  );
+
+  if (kind === "user") {
+    return (
+      <MessagePrimitive.Root
+        className={cn("group grid grid-cols-[minmax(72px,1fr)_auto] gap-y-1 px-2", entrance)}
+      >
+        {heading}
+        <div className="bg-muted text-foreground col-start-2 min-w-0 rounded-2xl px-4 py-2 break-words">
+          {parts}
+        </div>
+        <div className="col-start-2">{footer}</div>
+      </MessagePrimitive.Root>
+    );
+  }
+
   return (
     <MessagePrimitive.Root
-      className={`transcript-message transcript-message--${kind === "note" ? "compaction" : kind}${running ? " transcript-message--live" : ""}`}
+      className={cn(
+        "group px-2 leading-relaxed break-words",
+        kind === "system" || kind === "note" ? "text-muted-foreground text-sm" : "text-foreground",
+        entrance,
+      )}
       aria-busy={running}
     >
-      <header>
-        <div
-          className="transcript-message-title"
-          title={entryId === undefined ? undefined : `Entry (id: ${entryId})`}
-        >
-          <strong>{kindLabel[kind]}</strong>
-          {createdAt === undefined || kind === "failure" ? null : (
-            <MessageTime timestamp={createdAt} />
-          )}
-        </div>
-        {forkable ? (
-          <ActionBarPrimitive.Root className="message-actions" autohide="never">
-            <ActionBarPrimitive.Copy className="text-button">Copy</ActionBarPrimitive.Copy>
-            <button
-              className="text-button transcript-fork"
-              type="button"
-              aria-label="Fork from this entry"
-              onClick={() => onFork(entryId)}
-            >
-              Fork
-            </button>
-            {kind === "assistant" && hasToolCalls ? (
-              <button
-                className="text-button transcript-fork"
-                type="button"
-                aria-label="Fork Replay from this entry"
-                title="Fork Replay: carry completed tool results forward; unsafe tools need fresh approval"
-                onClick={() => onReplay(entryId)}
-              >
-                Replay
-              </button>
-            ) : null}
-          </ActionBarPrimitive.Root>
-        ) : null}
-      </header>
+      {kind === "assistant" ? (
+        heading
+      ) : (
+        <p className="m-0 mb-1 text-xs font-medium tracking-wide uppercase">{kindLabel[kind]}</p>
+      )}
       {running && !hasToolCalls ? <Responding /> : null}
-      {parts}
+      <div className="flex flex-col gap-2">{parts}</div>
       <MessagePrimitive.Error>
-        <ErrorPrimitive.Root className="transcript-error" role="alert">
-          <ErrorPrimitive.Message />
+        <ErrorPrimitive.Root
+          className="border-destructive bg-destructive/10 text-destructive mt-2 flex items-center gap-3 rounded-md border border-solid p-3 text-sm dark:text-red-200"
+          role="alert"
+        >
+          <TriangleAlertIcon className="size-4 shrink-0" aria-hidden />
+          <ErrorPrimitive.Message className="min-w-0 flex-1" />
         </ErrorPrimitive.Root>
       </MessagePrimitive.Error>
+      {kind === "assistant" ? footer : null}
     </MessagePrimitive.Root>
+  );
+}
+
+function MessageFooter({
+  align,
+  children,
+}: {
+  readonly align: "start" | "end";
+  readonly children: ReactNode;
+}) {
+  const isLast = useAuiState((s) => s.message.isLast);
+  return (
+    <div
+      className={cn(
+        "text-muted-foreground flex min-h-7 items-center gap-2 pt-1 text-xs transition-opacity motion-reduce:transition-none",
+        align === "end" && "justify-end",
+        !isLast && "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100",
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+function MessageActions({
+  onFork,
+  onReplay,
+}: {
+  readonly onFork: () => void;
+  readonly onReplay: (() => void) | undefined;
+}) {
+  return (
+    <ActionBarPrimitive.Root autohide="never" hideWhenRunning className="-ms-1 flex gap-1">
+      <ActionBarPrimitive.Copy asChild>
+        <TooltipIconButton tooltip="Copy">
+          <AuiIf condition={(s) => s.message.isCopied}>
+            <CheckIcon />
+          </AuiIf>
+          <AuiIf condition={(s) => !s.message.isCopied}>
+            <CopyIcon />
+          </AuiIf>
+        </TooltipIconButton>
+      </ActionBarPrimitive.Copy>
+      <TooltipIconButton tooltip="Fork" aria-label="Fork from this entry" onClick={onFork}>
+        <GitForkIcon />
+      </TooltipIconButton>
+      {onReplay === undefined ? null : (
+        <TooltipIconButton
+          tooltip="Fork Replay: carry completed tool results forward; unsafe tools need fresh approval"
+          aria-label="Fork Replay from this entry"
+          onClick={onReplay}
+        >
+          <RotateCcwIcon />
+        </TooltipIconButton>
+      )}
+    </ActionBarPrimitive.Root>
   );
 }
 
 function Responding() {
   const empty = useAuiState((s) => s.message.content.length === 0);
-  return empty ? <p className="responding">Responding…</p> : null;
+  return empty ? (
+    <p className="text-muted-foreground m-0 animate-pulse motion-reduce:animate-none">
+      Responding…
+    </p>
+  ) : null;
 }
 
 function Part({
@@ -363,7 +482,9 @@ function MessageText({ text }: { readonly text: string }) {
   return (
     <>
       {text.split(/\n{2,}/).map((paragraph, index) => (
-        <p key={index}>{paragraph}</p>
+        <p key={index} className="m-0 [overflow-wrap:anywhere] whitespace-pre-wrap [&+p]:mt-3">
+          {paragraph}
+        </p>
       ))}
     </>
   );

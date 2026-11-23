@@ -280,45 +280,6 @@ body:has(.session-workspace) {
   overflow-wrap: anywhere;
 }
 
-.thread {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-  min-block-size: 0;
-}
-
-.transcript {
-  --transcript-entry-gap: 0.875rem;
-
-  min-block-size: 0;
-  overflow-y: auto;
-  overflow-anchor: none;
-  overscroll-behavior: contain;
-  padding: 1rem;
-}
-
-.transcript-list,
-.tool-executions {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.transcript-list {
-  display: grid;
-  gap: var(--transcript-entry-gap);
-}
-
-.transcript-turn {
-  display: grid;
-  gap: 0.625rem;
-}
-
-.tool-executions {
-  display: grid;
-  gap: 0.5rem;
-  margin-inline-start: 1rem;
-}
-
 .tool-execution {
   padding-block: 0.625rem;
   border-block: 1px solid color-mix(in srgb, currentColor 16%, transparent);
@@ -365,110 +326,6 @@ body:has(.session-workspace) {
   padding-inline-start: 1.25rem;
 }
 
-.transcript-message {
-  display: grid;
-  gap: 0.25rem;
-}
-
-.transcript-message header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: baseline;
-  gap: 0.5rem;
-}
-
-.transcript-message-title {
-  display: flex;
-  min-inline-size: 0;
-  align-items: baseline;
-  gap: 0.5rem;
-  white-space: nowrap;
-}
-
-.transcript-message-title strong {
-  min-inline-size: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.transcript-message-title span,
-.transcript-message-title time,
-.transcript-fork {
-  flex: none;
-}
-
-.transcript-fork {
-  justify-self: end;
-  white-space: nowrap;
-}
-
-.transcript-fork--placeholder {
-  visibility: hidden;
-}
-
-.transcript-message p {
-  margin: 0;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-
-.transcript-message--live {
-  margin-block-start: var(--transcript-entry-gap);
-}
-
-.compaction-status,
-.transcript-error {
-  margin-block-start: 1rem;
-}
-
-.transcript-message--queued {
-  opacity: 0.6;
-}
-
-.queued-inputs {
-  margin-block-start: 1rem;
-}
-
-.prompt-bar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.5rem;
-  padding: 1rem;
-  border-block-start: 1px solid;
-}
-
-.prompt-bar textarea {
-  inline-size: 100%;
-  resize: none;
-}
-
-.message-actions {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.prompt-bar button {
-  min-inline-size: 5rem;
-}
-
-.typing-indicator {
-  grid-column: 1 / -1;
-  min-block-size: 1.25em;
-  margin: 0;
-}
-
-.visually-hidden {
-  position: absolute;
-  inline-size: 1px;
-  block-size: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-  border: 0;
-}
-
 @media (width < 44rem) {
   .session-workspace {
     grid-template-columns: 1fr;
@@ -495,9 +352,4 @@ body:has(.session-workspace) {
     grid-column: 1;
     grid-row: 2;
   }
-}
-
-.transcript-load {
-  align-self: center;
-  margin-block: 0.5rem;
 }
