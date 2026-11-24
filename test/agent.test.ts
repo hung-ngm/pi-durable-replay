@@ -53,7 +53,7 @@ describe("research agent", () => {
         for (const tool of message.toolsRemoved ?? []) names.delete(tool.name);
       }
       offered.push([...names]);
-      const last = request.messages[request.messages.length - 1];
+      const last = request.messages.findLast((message) => message.role !== "system");
       return last?.role === "toolResult"
         ? fauxAssistantMessage([
             fauxText(`Answer from ${JSON.stringify(last.content).slice(0, 80)}`),

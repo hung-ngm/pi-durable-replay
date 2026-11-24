@@ -13,7 +13,7 @@ import {
   MemoryStorage,
   type TaskGraph,
 } from "@earendil-works/pi-durable";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAgentHarnessOptions } from "../src/agent.ts";
 import { kill } from "../src/control.ts";
 import { approveUnsafe, readReplay, replayFork } from "../src/replay.ts";
@@ -40,10 +40,11 @@ const loopCall = () =>
  * One scripted model for every conversation. A user turn asking to research gets a
  * search, any other user turn and a search result get a loop_forever call, and a
  * loop_forever result (blocked or aborted) ends the turn. Recruited loop children
- * answer once, so they never drain the script.
+ * answer once, so they never drain the script. It skips system messages: the clock
+ * section appends one whenever the minute rolls over between requests.
  */
 const scripted: FauxResponseStep = (transcript) => {
-  const last = transcript.messages[transcript.messages.length - 1];
+  const last = transcript.messages.findLast((message) => message.role !== "system");
   if (JSON.stringify(transcript).includes("Call the loop_forever tool")) {
     return fauxAssistantMessage("child done");
   }
@@ -131,7 +132,18 @@ describe("replay (SPEC test 4)", () => {
     }
   }, 60_000);
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("gates loop_forever in a fork of a conversation that looped, until the operator approves", async () => {
+    // Start just before a minute boundary, so the clock section always appends a system
+    // message mid-test, as it does in production when the minute rolls over.
+    vi.useFakeTimers({
+      toFake: ["Date"],
+      now: Date.parse("2026-11-24T13:24:59.900Z"),
+      shouldAdvanceTime: true,
+    });
     const { harness, root, graph } = await openAgent(Array.from({ length: 200 }, () => scripted));
     const toolTasksIn = (conversationId: ConversationId) =>
       harness.commit(
