@@ -255,6 +255,8 @@ export async function checkBudgets(
     if (!ownerless.has(conversationId)) continue;
     const id = conversationId as ConversationId;
     const taskId = liveRuns.get(conversationId)!;
+    // A killed run stays live while its owned work aborts; it needs no second kill.
+    if (control.kills.some((record) => record.taskId === taskId)) continue;
     const stored = control.runs[String(conversationId)];
     const budgets =
       stored?.taskId === taskId
@@ -274,10 +276,6 @@ export async function checkBudgets(
           ? "turns"
           : undefined;
     if (fired !== undefined) {
-      await harness.commit(async (tx) => {
-        const doc = await tx.doc(ControlDoc);
-        delete doc.runs[String(conversationId)];
-      }, context);
       kills.push(
         await kill(
           harness,

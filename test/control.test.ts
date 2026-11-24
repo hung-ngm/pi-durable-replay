@@ -113,7 +113,14 @@ describe("control: kills and budgets (SPEC tests 1, 2, 8)", () => {
         budget: "turns",
       });
 
-      await poll(() => (liveNodes(graph()).length === 0 ? true : undefined), 30_000);
+      // The guard keeps running while the killed run aborts; it must not kill it again.
+      const drainDeadline = Date.now() + 30_000;
+      while (liveNodes(graph()).length > 0 && Date.now() < drainDeadline) {
+        await checkBudgets(harness, graph(), context);
+        await sleep(20);
+      }
+      expect(liveNodes(graph())).toHaveLength(0);
+      expect((await readControl(harness, context)).kills).toHaveLength(1);
       const count = async () =>
         (await harness.commit((tx) => tx.scanConversations({}, 1_000), context)).items.length;
       const settledCount = await count();
