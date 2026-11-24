@@ -159,10 +159,9 @@ describe("control: kills and budgets (SPEC tests 1, 2, 8)", () => {
       await poll(() => (liveNodes(graph()).length === 0 ? true : undefined));
 
       // Run 2 starts under the new budgets; its first response alone crosses the token budget.
+      // The guard first sees run 2 only after that response committed, and still counts it.
       const second = await root.submit({ type: "input", content: "Second run" }, context);
       void second;
-      await poll(() => Object.values(graph().tasks).find((node) => node.kind === "pi.generation"));
-      await checkBudgets(harness, graph(), context);
       await poll(() =>
         Object.values(graph().tasks).find(
           (node) => node.kind === "pi.tool" && node.state.status === "running",

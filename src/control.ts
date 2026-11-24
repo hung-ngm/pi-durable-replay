@@ -2,7 +2,8 @@ import type { Context } from "@earendil-works/chord/context";
 import {
   AssistantEntry,
   defineDoc,
-  UsageDoc,
+  LiveDoc,
+  ToolResultEntry,
   type CommitPublication,
   type ConversationId,
   type Harness,
@@ -23,12 +24,10 @@ export type KillRecord = {
   at: number;
 };
 
-export type RunBaseline = {
+export type RunBudgets = {
   /** The generation task that started this run; a different live generation is a new run. */
   taskId: number;
-  tokensAtStart: number;
-  turnsAtStart: number;
-  /** Budgets snapshotted when the run started; later edits apply to the next run (SPEC test 8). */
+  /** Budgets snapshotted when the guard first saw the run; later edits apply to the next run (SPEC test 8). */
   tokenBudget: number;
   turnBudget: number;
 };
@@ -37,7 +36,7 @@ export type ControlState = {
   tokenBudget: number;
   turnBudget: number;
   kills: KillRecord[];
-  runs: Record<string, RunBaseline>;
+  runs: Record<string, RunBudgets>;
 };
 
 export const DEFAULT_TOKEN_BUDGET = 100_000;
@@ -81,7 +80,7 @@ export async function readControl(harness: Harness, context: Context): Promise<C
     kills: doc.kills.map((kill) => ({ ...kill })),
     runs: Object.fromEntries(
       Object.entries(doc.runs).map(([key, run]) => [key, { ...run }]),
-    ) as Record<string, RunBaseline>,
+    ) as Record<string, RunBudgets>,
   };
 }
 
@@ -158,13 +157,19 @@ export async function kill(
 
 type UsageTotals = { tokens: number; turns: number };
 
-/** Usage of one conversation subtree: the conversation plus every conversation owned beneath it. */
-async function subtreeUsage(
+/**
+ * Usage of one run: the entries of its conversation subtree from the run's first entry on.
+ * Entry IDs are session-wide and ascending, so this needs no baseline and cannot miss a
+ * response that committed before the guard first saw the run.
+ */
+async function runUsage(
   harness: Harness,
   rootId: ConversationId,
   context: Context,
 ): Promise<UsageTotals> {
   return harness.commit(async (tx) => {
+    const first = (await tx.doc(LiveDoc, rootId)).run?.first;
+    if (first === undefined) return { tokens: 0, turns: 0 };
     const conversations = (await tx.scanConversations({}, 1_000)).items;
     const parentOf = new Map<number, number>();
     for (const conversation of conversations) {
@@ -189,17 +194,19 @@ async function subtreeUsage(
     let turns = 0;
     for (const conversation of conversations) {
       if (!inSubtree(conversation.id as number)) continue;
-      const usage = await tx.doc(UsageDoc, conversation.id);
-      for (const bucket of [usage.models, usage.tools]) {
-        for (const entry of Object.values(bucket)) {
-          tokens += entry.totalTokens ?? entry.input + entry.output;
-        }
-      }
       let cursor;
       do {
         const page = await tx.scanEntries({ conversationId: conversation.id }, 100, cursor);
         for (const entry of page.items) {
-          if (AssistantEntry.is(entry)) turns += 1;
+          if ((entry.id as number) < (first as number)) continue;
+          const isAssistant = AssistantEntry.is(entry);
+          if (!isAssistant && !ToolResultEntry.is(entry)) continue;
+          if (isAssistant) turns += 1;
+          for (const message of entry.model ?? []) {
+            if ("usage" in message && message.usage !== undefined) {
+              tokens += message.usage.totalTokens ?? message.usage.input + message.usage.output;
+            }
+          }
         }
         cursor = page.next;
       } while (cursor !== undefined);
@@ -211,8 +218,8 @@ async function subtreeUsage(
 /**
  * The budget guard. Called by the Session host whenever the task graph or the commit
  * stream moves. A run is one live generation in an ownerless conversation; its usage
- * is its conversation subtree's usage minus the baseline taken when the run started,
- * judged against the budgets snapshotted at that same moment.
+ * is what its conversation subtree spent from the run's first entry on, judged against
+ * the budgets snapshotted when the guard first saw the run.
  */
 export async function checkBudgets(
   harness: Harness,
@@ -247,27 +254,23 @@ export async function checkBudgets(
   for (const [conversationId] of liveRuns) {
     if (!ownerless.has(conversationId)) continue;
     const id = conversationId as ConversationId;
-    const usage = await subtreeUsage(harness, id, context);
-    const baseline = control.runs[String(conversationId)];
-    if (baseline === undefined || baseline.taskId !== liveRuns.get(conversationId)) {
+    const taskId = liveRuns.get(conversationId)!;
+    const stored = control.runs[String(conversationId)];
+    const budgets =
+      stored?.taskId === taskId
+        ? stored
+        : { taskId, tokenBudget: control.tokenBudget, turnBudget: control.turnBudget };
+    if (budgets !== stored) {
       await harness.commit(async (tx) => {
         const doc = await tx.doc(ControlDoc);
-        doc.runs[String(conversationId)] = {
-          taskId: liveRuns.get(conversationId)!,
-          tokensAtStart: usage.tokens,
-          turnsAtStart: usage.turns,
-          tokenBudget: doc.tokenBudget,
-          turnBudget: doc.turnBudget,
-        };
+        doc.runs[String(conversationId)] = budgets;
       }, context);
-      continue;
     }
-    const tokensUsed = usage.tokens - baseline.tokensAtStart;
-    const turnsUsed = usage.turns - baseline.turnsAtStart;
+    const usage = await runUsage(harness, id, context);
     const fired: BudgetKind | undefined =
-      tokensUsed > baseline.tokenBudget
+      usage.tokens > budgets.tokenBudget
         ? "tokens"
-        : turnsUsed > baseline.turnBudget
+        : usage.turns > budgets.turnBudget
           ? "turns"
           : undefined;
     if (fired !== undefined) {
@@ -281,7 +284,7 @@ export async function checkBudgets(
           graph,
           {
             conversationId: id,
-            taskId: liveRuns.get(conversationId) as TaskId,
+            taskId: taskId as TaskId,
             reason: "budget",
             budget: fired,
           },

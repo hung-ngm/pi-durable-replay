@@ -51,7 +51,7 @@ Modules:
 
 - `src/session.ts` (from the fork, kept): the DO host. Hibernating WebSockets, serialized alarm arming, view restore after eviction, `resume()` on wake, and the Crash now eviction.
 - `src/protocol.ts` (extended): the commands `conversation.open`, `conversation.entries`, `conversation.create`, `prompt.submit`, `task.abort` (kill a run by its generation task), `run.replayFork`, `run.approveUnsafe`, `fault.inject` (Crash now), and `control.setBudgets`. Strict validation, as upstream.
-- `src/control.ts` (new): `ControlDoc` via `defineDoc` (budgets, the kill log, run baselines), `kill()` for one run, and the budget guard `checkBudgets`, which the host calls whenever the task graph or the commit stream moves.
+- `src/control.ts` (new): `ControlDoc` via `defineDoc` (budgets, the kill log, each live run's budget snapshot), `kill()` for one run, and the budget guard `checkBudgets`, which the host calls whenever the task graph or the commit stream moves.
 - `src/replay.ts` (new): Fork Replay in one function. Reads committed entries, forks at the chosen entry, and writes a `ReplayDoc` on the new conversation naming source conversation, fork entry, and carried tool results. A source conversation with a committed `loop_forever` call arms the approval gate, wherever the call sits relative to the fork point. `unsafeGateHook` blocks `loop_forever` while the gate is armed. An approval is recorded durably in the fork's `ReplayDoc`, so it is never asked twice across a crash.
 - `src/agent.ts` (renamed from `chat.ts`): model composition via pi-ai. OpenAI provider, default model as shipped by the fork, changeable per conversation.
 - `src/tools.ts` (replaced): `search`, `research`, `loop_forever`. Demo tools from the fork are deleted.
@@ -62,7 +62,7 @@ Data shapes (five):
 - `Session`: one DO, one SQLite store (pi-durable's Cloudflare storage).
 - `Run`: derived from the task graph. Not stored separately.
 - `Tool Intent`: the tool task's own committed checkpoint. Derived view, not a second store.
-- `ControlDoc`: stored document. Budgets, the kill log, and the baseline of each live run.
+- `ControlDoc`: stored document. Budgets, the kill log, and the budget snapshot of each live run.
 - `ReplayDoc`: stored document on the forked conversation. Provenance of a Fork Replay and its approval state.
 
 ## How the system works
@@ -161,7 +161,7 @@ flowchart TD
   T3 --> L1
 ```
 
-The budget guard runs whenever the task graph or the commit stream moves. When it first sees a run, it records a baseline: the subtree's tokens and turns, plus the budgets in force at that moment. It judges the run against that snapshot, so a budget edit applies to the next run only.
+The budget guard runs whenever the task graph or the commit stream moves. A run's usage is what its conversation subtree spent from the run's first entry (`pi.live` `run.first`) on: the tokens on its assistant and tool-result entries, and its assistant turns. Entry IDs ascend across the session, so a response that commits before the guard first sees the run still counts. When the guard first sees a run, it snapshots the budgets in force and judges the run against that snapshot, so a budget edit applies to the next run only.
 
 ```mermaid
 sequenceDiagram
@@ -169,9 +169,9 @@ sequenceDiagram
   participant G as Budget guard (checkBudgets)
   participant C as ControlDoc
   H->>G: task graph or commit changed
-  G->>C: first sight of this generation: store baseline and budget snapshot
+  G->>C: first sight of this generation: store the budget snapshot
   H->>G: task graph or commit changed
-  G->>G: usage = subtree pi.usage tokens and assistant turns - baseline
+  G->>G: usage = subtree entries from run.first on: tokens and assistant turns
   alt usage crosses the snapshot budget
     G->>C: record Kill {reason: budget, budget: tokens or turns}
     G->>H: abortTask(generation), owned work aborts bottom-up
